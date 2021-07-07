@@ -1436,7 +1436,7 @@ func (h *Handler) changePasswordWithToken(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	res, err := h.auth.proxyClient.ChangePasswordWithToken(r.Context(), &proto.ChangeUserAuthCredWithTokenRequest{
+	res, err := h.auth.proxyClient.ChangePasswordWithToken(r.Context(), &proto.NewUserAuthCredWithTokenRequest{
 		SecondFactorToken:   req.SecondFactorToken,
 		TokenID:             req.TokenID,
 		Password:            req.Password,
