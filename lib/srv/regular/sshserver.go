@@ -176,6 +176,9 @@ type Server struct {
 	// allowTCPForwarding indicates whether the ssh server is allowed to offer
 	// TCP port forwarding.
 	allowTCPForwarding bool
+
+	// lockWatcher is the server's lock watcher.
+	lockWatcher *services.LockWatcher
 }
 
 // GetClock returns server clock implementation
@@ -224,6 +227,21 @@ func (s *Server) GetBPF() bpf.BPF {
 	return s.ebpf
 }
 
+// GetLockWatcher gets the server's lock watcher.
+func (s *Server) GetLockWatcher() *services.LockWatcher {
+	return s.lockWatcher
+}
+
+// IsLockedOut returns an error if the identity is matched by an active lock.
+func (s *Server) IsLockedOut(id srv.IdentityContext) error {
+	lock := s.lockWatcher.GetLockInForce(srv.ComputeLockTargets(s, id)...)
+	// TODO(andrej): Handle stale lock views.
+	if lock != nil {
+		return trace.AccessDenied(services.LockInForceMessage(lock))
+	}
+	return nil
+}
+
 // isAuditedAtProxy returns true if sessions are being recorded at the proxy
 // and this is a Teleport node.
 func (s *Server) isAuditedAtProxy() bool {
@@ -248,6 +266,7 @@ type ServerOption func(s *Server) error
 // Close closes listening socket and stops accepting connections
 func (s *Server) Close() error {
 	s.cancel()
+	s.lockWatcher.Close()
 	s.reg.Close()
 	if s.heartbeat != nil {
 		if err := s.heartbeat.Close(); err != nil {
@@ -263,6 +282,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// wait until connections drain off
 	err := s.srv.Shutdown(ctx)
 	s.cancel()
+	s.lockWatcher.Close()
 	s.reg.Close()
 	if s.heartbeat != nil {
 		if err := s.heartbeat.Close(); err != nil {
@@ -296,6 +316,9 @@ func (s *Server) Start() error {
 	// Heartbeat uses this address to announce. Avoid announcing an empty
 	// address on first heartbeat.
 	go s.heartbeat.Run()
+
+	// Run the lock watcher's watch loop.
+	go s.lockWatcher.RunWatchLoop()
 	return nil
 }
 
@@ -308,6 +331,7 @@ func (s *Server) Serve(l net.Listener) error {
 	}
 
 	go s.heartbeat.Run()
+	go s.lockWatcher.RunWatchLoop()
 	return s.srv.Serve(l)
 }
 
@@ -516,6 +540,14 @@ func SetAllowTCPForwarding(allow bool) ServerOption {
 	}
 }
 
+// SetLockWatcher sets the server's lock watcher.
+func SetLockWatcher(lockWatcher *services.LockWatcher) ServerOption {
+	return func(s *Server) error {
+		s.lockWatcher = lockWatcher
+		return nil
+	}
+}
+
 // New returns an unstarted server
 func New(addr utils.NetAddr,
 	hostname string,
@@ -574,6 +606,10 @@ func New(addr utils.NetAddr,
 
 	if s.namespace == "" {
 		return nil, trace.BadParameter("setup valid namespace parameter using SetNamespace")
+	}
+
+	if s.lockWatcher == nil {
+		return nil, trace.BadParameter("setup valid LockWatcher parameter using SetLockWatcher")
 	}
 
 	var component string
@@ -876,7 +912,7 @@ func (s *Server) HandleRequest(r *ssh.Request) {
 
 // HandleNewConn is called by sshutils.Server once for each new incoming connection,
 // prior to handling any channels or requests.  Currently this callback's only
-// function is to apply concurrent session control limits.
+// function is to apply session control restrictions.
 func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionContext) (context.Context, error) {
 	// we don't currently have any work to do in non-node contexts.
 	if s.Component() != teleport.ComponentNode {
@@ -888,8 +924,36 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 		return ctx, trace.Wrap(err)
 	}
 
-	maxConnections := identityContext.RoleSet.MaxConnections()
+	if err := s.IsLockedOut(identityContext); err != nil {
+		if trace.IsAccessDenied(err) {
+			if err := s.EmitAuditEvent(s.ctx, &apievents.SessionReject{
+				Metadata: apievents.Metadata{
+					Type: events.SessionRejectedEvent,
+					Code: events.SessionRejectedCode,
+				},
+				UserMetadata: apievents.UserMetadata{
+					Login:        identityContext.Login,
+					User:         identityContext.TeleportUser,
+					Impersonator: identityContext.Impersonator,
+				},
+				ConnectionMetadata: apievents.ConnectionMetadata{
+					Protocol:   events.EventProtocolSSH,
+					LocalAddr:  ccx.ServerConn.LocalAddr().String(),
+					RemoteAddr: ccx.ServerConn.RemoteAddr().String(),
+				},
+				ServerMetadata: apievents.ServerMetadata{
+					ServerID:        s.uuid,
+					ServerNamespace: s.GetNamespace(),
+				},
+				Reason: err.Error(),
+			}); err != nil {
+				log.WithError(err).Warn("Failed to emit session reject event.")
+			}
+		}
+		return ctx, trace.Wrap(err)
+	}
 
+	maxConnections := identityContext.RoleSet.MaxConnections()
 	if maxConnections == 0 {
 		// concurrent session control is not active, nothing
 		// else needs to be done here.
@@ -901,7 +965,7 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 		return ctx, trace.Wrap(err)
 	}
 
-	lock, err := services.AcquireSemaphoreLock(ctx, services.SemaphoreLockConfig{
+	semLock, err := services.AcquireSemaphoreLock(ctx, services.SemaphoreLockConfig{
 		Service: s.authService,
 		Expiry:  netConfig.GetSessionControlTimeout(),
 		Params: types.AcquireSemaphoreRequest{
@@ -946,7 +1010,7 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 		}
 		return ctx, trace.Wrap(err)
 	}
-	go lock.KeepAlive(ctx)
+	go semLock.KeepAlive(ctx)
 	// ensure that losing the lock closes the connection context.  Under normal
 	// conditions, cancellation propagates from the connection context to the
 	// lock, but if we lose the lock due to some error (e.g. poor connectivity
@@ -954,7 +1018,7 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 	go func() {
 		// TODO(fspmarshall): If lock was lost due to error, find a way to propagate
 		// an error message to user.
-		<-lock.Done()
+		<-semLock.Done()
 		ccx.Close()
 	}()
 	return ctx, nil
@@ -1243,7 +1307,7 @@ func (s *Server) handleSessionRequests(ctx context.Context, ccx *sshutils.Connec
 	// session request is complete.
 	ctx, scx, err := srv.NewServerContext(ctx, ccx, s, identityContext)
 	if err != nil {
-		log.Errorf("Unable to create connection context: %v.", err)
+		log.WithError(err).Errorf("Unable to create connection context.")
 		writeStderr(ch, "Unable to create connection context.")
 		return
 	}

@@ -2217,6 +2217,9 @@ message LockSpecV2 {
 
 // LockTarget lists the attributes of interactions to be disabled.
 message LockTarget {
+    option (gogoproto.goproto_stringer) = false;
+    option (gogoproto.stringer) = false;
+
     // User specifies the name of a Teleport user.
     string User = 1 [ (gogoproto.jsontag) = "user,omitempty" ];
 
@@ -2232,7 +2235,7 @@ message LockTarget {
     // Login specifies the name of a local UNIX user.
     string Login = 4 [ (gogoproto.jsontag) = "login,omitempty" ];
 
-    // Node specifies the name or UUID of a node.
+    // Node specifies the UUID of a Teleport node.
     // A matching node is also unregistered and prevented from registering.
     string Node = 5 [ (gogoproto.jsontag) = "node,omitempty" ];
 

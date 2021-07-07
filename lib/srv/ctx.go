@@ -128,6 +128,9 @@ type Server interface {
 
 	// GetUtmpPath returns the path of the user accounting database and log. Returns empty for system defaults.
 	GetUtmpPath() (utmp, wtmp string)
+
+	// GetLockWatcher gets the server's lock watcher.
+	GetLockWatcher() *services.LockWatcher
 }
 
 // IdentityContext holds all identity information associated with the user
@@ -320,7 +323,6 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 	if err != nil {
 		return nil, nil, trace.Wrap(err)
 	}
-
 	disconnectExpiredCert := identityContext.RoleSet.AdjustDisconnectExpiredCert(authPref.GetDisconnectExpiredCert())
 	if !identityContext.CertValidBefore.IsZero() && disconnectExpiredCert {
 		child.disconnectExpiredCert = identityContext.CertValidBefore
@@ -344,25 +346,24 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 		trace.ComponentFields: fields,
 	})
 
-	if !child.disconnectExpiredCert.IsZero() || child.clientIdleTimeout != 0 {
-		child.Monitor, err = NewMonitor(MonitorConfig{
-			DisconnectExpiredCert: child.disconnectExpiredCert,
-			ClientIdleTimeout:     child.clientIdleTimeout,
-			Clock:                 child.srv.GetClock(),
-			Tracker:               child,
-			Conn:                  child.ServerConn,
-			Context:               cancelContext,
-			TeleportUser:          child.Identity.TeleportUser,
-			Login:                 child.Identity.Login,
-			ServerID:              child.srv.ID(),
-			Entry:                 child.Entry,
-			Emitter:               child.srv,
-		})
-		if err != nil {
-			child.Close()
-			return nil, nil, trace.Wrap(err)
-		}
-		go child.Monitor.Start()
+	child.Monitor, err = StartMonitor(MonitorConfig{
+		LockWatcher:           child.srv.GetLockWatcher(),
+		LockTargets:           ComputeLockTargets(srv, identityContext),
+		DisconnectExpiredCert: child.disconnectExpiredCert,
+		ClientIdleTimeout:     child.clientIdleTimeout,
+		Clock:                 child.srv.GetClock(),
+		Tracker:               child,
+		Conn:                  child.ServerConn,
+		Context:               cancelContext,
+		TeleportUser:          child.Identity.TeleportUser,
+		Login:                 child.Identity.Login,
+		ServerID:              child.srv.ID(),
+		Entry:                 child.Entry,
+		Emitter:               child.srv,
+	})
+	if err != nil {
+		child.Close()
+		return nil, nil, trace.Wrap(err)
 	}
 
 	// Create pipe used to send command to child process.
@@ -902,4 +903,16 @@ func newUaccMetadata(c *ServerContext) (*UaccMetadata, error) {
 		UtmpPath:   utmpPath,
 		WtmpPath:   wtmpPath,
 	}, nil
+}
+
+// ComputeLockTargets computes lock targets inferred from a Server
+// and an IdentityContext.
+func ComputeLockTargets(s Server, id IdentityContext) []types.LockTarget {
+	return append([]types.LockTarget{
+		{User: id.TeleportUser},
+		{Cluster: id.RouteToCluster},
+		{Login: id.Login},
+		{Node: s.ID()},
+		{MFADevice: id.Certificate.Extensions[teleport.CertExtensionMFAVerified]},
+	}, services.RolesToLockTargets(id.RoleSet.RoleNames())...)
 }
