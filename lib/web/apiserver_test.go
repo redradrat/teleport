@@ -1367,9 +1367,10 @@ func (s *WebSuite) TestChangePasswordWithTokenOTP(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	var recoveryTokens []string
-	c.Assert(json.Unmarshal(re.Bytes(), &recoveryTokens), IsNil)
-	c.Assert(recoveryTokens, HasLen, 0)
+	// Test that no recovery codes are returned b/c cloud is not turned on.
+	var recoveryCodes []string
+	c.Assert(json.Unmarshal(re.Bytes(), &recoveryCodes), IsNil)
+	c.Assert(recoveryCodes, HasLen, 0)
 }
 
 func (s *WebSuite) TestChangePasswordWithTokenU2F(c *C) {
@@ -1424,9 +1425,10 @@ func (s *WebSuite) TestChangePasswordWithTokenU2F(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	var recoveryTokens []string
-	c.Assert(json.Unmarshal(re.Bytes(), &recoveryTokens), IsNil)
-	c.Assert(recoveryTokens, HasLen, 0)
+	// Test that no recovery codes are returned b/c cloud is not turned on.
+	var recoveryCodes []string
+	c.Assert(json.Unmarshal(re.Bytes(), &recoveryCodes), IsNil)
+	c.Assert(recoveryCodes, HasLen, 0)
 }
 
 func TestU2FLogin(t *testing.T) {
