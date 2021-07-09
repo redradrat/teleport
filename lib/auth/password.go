@@ -401,6 +401,10 @@ func (s *Server) changePasswordWithToken(ctx context.Context, req *proto.NewUser
 		return nil, trace.BadParameter("expired token")
 	}
 
+	if token.GetSubKind() != ResetPasswordTokenInvite && token.GetSubKind() != ResetPasswordTokenPassword {
+		return nil, trace.BadParameter("invalid token")
+	}
+
 	err = s.changeUserSecondFactor(req, token)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -449,7 +453,12 @@ func (s *Server) changeUserSecondFactor(req *proto.NewUserAuthCredWithTokenReque
 			return trace.Wrap(err)
 		}
 
-		dev, err := services.NewTOTPDevice("otp", secrets.GetOTPKey(), s.clock.Now())
+		deviceName := req.DeviceName
+		if deviceName == "" {
+			deviceName = "otp"
+		}
+
+		dev, err := services.NewTOTPDevice(deviceName, secrets.GetOTPKey(), s.clock.Now())
 		if err != nil {
 			return trace.Wrap(err)
 		}
@@ -471,8 +480,13 @@ func (s *Server) changeUserSecondFactor(req *proto.NewUserAuthCredWithTokenReque
 			return trace.Wrap(err)
 		}
 
+		deviceName := req.DeviceName
+		if deviceName == "" {
+			deviceName = "u2f"
+		}
+
 		_, err = u2f.RegisterVerify(ctx, u2f.RegisterVerifyParams{
-			DevName:                "u2f",
+			DevName:                deviceName,
 			ChallengeStorageKey:    req.TokenID,
 			RegistrationStorageKey: username,
 			Resp: u2f.RegisterChallengeResponse{

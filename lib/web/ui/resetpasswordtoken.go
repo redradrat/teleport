@@ -29,5 +29,5 @@ type ResetPasswordToken struct {
 	// Expiry is token expiration time
 	Expiry time.Time `json:"expiry,omitempty"`
 	// RecoveryType is the recover type user requested upon starting recovery.
-	RecoveryType string `json:"recoverType,omitempty"`
+	RecoveryType string `json:"recoveryType,omitempty"`
 }

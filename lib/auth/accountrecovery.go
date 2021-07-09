@@ -381,7 +381,6 @@ func (s *Server) RecoverAccountWithToken(ctx context.Context, req *proto.NewUser
 		if req.GetSecondFactorToken() == "" {
 			return nil, trace.BadParameter("expected a second factor token")
 		}
-
 	}
 
 	// Set new auth cred.

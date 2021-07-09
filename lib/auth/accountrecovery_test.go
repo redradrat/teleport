@@ -128,8 +128,8 @@ func TestRecoveryCodeEventsEmitted(t *testing.T) {
 }
 
 // TestAddTOTPWithRecoveryTokenAndPassword tests a scenario where
-// user has an accout with a password and u2f but doesn't have access to
-// the registered u2f key, and wants access to add a new totp device.
+// user has an accout with a password and otp but lost their device
+// and wants access to add a new totp device.
 func TestAddTOTPWithRecoveryTokenAndPassword(t *testing.T) {
 	srv := newTestTLSServer(t)
 	ctx := context.Background()
@@ -138,8 +138,8 @@ func TestAddTOTPWithRecoveryTokenAndPassword(t *testing.T) {
 	defer modules.SetModules(defaultModules)
 	modules.SetModules(&testWithCloudModules{})
 
-	// User starts with an account with a password and u2f.
-	u, err := createUserAuthCreds(srv, "u2f")
+	// User starts with an account with a password and otp.
+	u, err := createUserAuthCreds(srv, "otp")
 	require.NoError(t, err)
 
 	// Get access to begin recovery.
@@ -163,10 +163,19 @@ func TestAddTOTPWithRecoveryTokenAndPassword(t *testing.T) {
 	newOTP, err := getOTPCode(srv, approvedToken.GetName())
 	require.NoError(t, err)
 
-	// Add new device.
+	// Add new totp device with existing device name.
+	_, err = srv.Auth().RecoverAccountWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
+		TokenID:           approvedToken.GetName(),
+		SecondFactorToken: newOTP,
+		DeviceName:        "otp",
+	})
+	require.True(t, trace.IsAlreadyExists(err))
+
+	// Add new totp device with unique device name.
 	res2, err := srv.Auth().RecoverAccountWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
 		TokenID:           approvedToken.GetName(),
 		SecondFactorToken: newOTP,
+		DeviceName:        "new-otp",
 	})
 	require.NoError(t, err)
 	require.Equal(t, res2.Username, u.username)
@@ -186,17 +195,13 @@ func TestAddTOTPWithRecoveryTokenAndPassword(t *testing.T) {
 	require.NoError(t, err)
 
 	deviceNames := make([]string, 0, len(mfas))
-	newTOTPKey := ""
 	for _, mfa := range mfas {
-		if mfa.MFAType() == "TOTP" {
-			newTOTPKey = mfa.GetTotp().Key
-		}
-		deviceNames = append(deviceNames, mfa.MFAType())
+		deviceNames = append(deviceNames, mfa.GetName())
 	}
-	require.ElementsMatch(t, []string{"U2F", "TOTP"}, deviceNames)
+	require.ElementsMatch(t, []string{"otp", "new-otp"}, deviceNames)
 
-	// Try authenticating with the new otp device.
-	newOTP, err = totp.GenerateCode(newTOTPKey, srv.Clock().Now().Add(30*time.Second))
+	// Try authenticating with first device.
+	newOTP, err = totp.GenerateCode(mfas[0].GetTotp().Key, srv.Clock().Now().Add(30*time.Second))
 	require.NoError(t, err)
 	_, err = srv.Auth().authenticateUser(ctx, AuthenticateUserRequest{
 		Username: u.username,
@@ -207,29 +212,21 @@ func TestAddTOTPWithRecoveryTokenAndPassword(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Try authenticating with previously set up u2f device.
-	chal, err := srv.Auth().GetMFAAuthenticateChallenge(u.username, u.password)
+	// Try authenticating with second device.
+	newOTP, err = totp.GenerateCode(mfas[1].GetTotp().Key, srv.Clock().Now())
 	require.NoError(t, err)
-
-	u2f, err := u.u2fKey.SignResponse(&u2f.SignRequest{
-		Version:   chal.Version,
-		Challenge: chal.Challenge,
-		KeyHandle: chal.KeyHandle,
-		AppID:     chal.AppID,
-	})
-	require.NoError(t, err)
-
 	_, err = srv.Auth().authenticateUser(ctx, AuthenticateUserRequest{
 		Username: u.username,
-		U2F: &U2FSignResponseCreds{
-			SignResponse: *u2f,
+		OTP: &OTPCreds{
+			Password: u.password,
+			Token:    newOTP,
 		},
 	})
 	require.NoError(t, err)
 }
 
 // TestAddU2FWithRecoveryTokenAndPassword tests a scenario where
-// user has an accout with a password and totp but somehow lost access to a totp authenticator
+// user has an accout with a password and u2f but lost their u2f key
 // and user wants access to add a new u2f device.
 func TestAddU2FWithRecoveryTokenAndPassword(t *testing.T) {
 	srv := newTestTLSServer(t)
@@ -239,9 +236,15 @@ func TestAddU2FWithRecoveryTokenAndPassword(t *testing.T) {
 	defer modules.SetModules(defaultModules)
 	modules.SetModules(&testWithCloudModules{})
 
-	// User starts with an account with a password and totp.
-	u, err := createUserAuthCreds(srv, "otp")
+	// User starts with an account with a password and u2f.
+	u, err := createUserAuthCreds(srv, "u2f")
 	require.NoError(t, err)
+
+	// Preserve first u2f key handle.
+	chal, err := srv.Auth().GetMFAAuthenticateChallenge(u.username, u.password)
+	require.NoError(t, err)
+	require.Len(t, chal.U2FChallenges, 1)
+	firstChal := chal.U2FChallenges[0]
 
 	// Get access to begin recovery.
 	startToken, err := srv.Auth().VerifyRecoveryCode(ctx, &proto.VerifyRecoveryCodeRequest{
@@ -259,59 +262,78 @@ func TestAddU2FWithRecoveryTokenAndPassword(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	u2fRegResp, mockU2FKey, err := getMockedU2FAndRegisterRes(srv, approvedToken.GetName())
+	// Create a new u2f key.
+	u2fRegResp, newU2FKey, err := getMockedU2FAndRegisterRes(srv, approvedToken.GetName())
 	require.NoError(t, err)
 
-	// Add the new device.
+	// Test adding new u2f device with an already existing device name.
+	_, err = srv.Auth().RecoverAccountWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
+		TokenID:             approvedToken.GetName(),
+		U2FRegisterResponse: u2fRegResp,
+		DeviceName:          "u2f",
+	})
+	require.True(t, trace.IsAlreadyExists(err))
+
+	// Test adding new u2f device with unique device name
 	res, err := srv.Auth().RecoverAccountWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
 		TokenID:             approvedToken.GetName(),
 		U2FRegisterResponse: u2fRegResp,
+		DeviceName:          "new-u2f",
 	})
 	require.NoError(t, err)
 	require.Len(t, res.RecoveryCodes, 3)
 
 	// There should be 2 mfa devices.
-	mfas, err := srv.Auth().GetMFADevices(ctx, u.username)
+	devices, err := srv.Auth().GetMFADevices(ctx, u.username)
 	require.NoError(t, err)
+	require.Len(t, devices, 2)
 
-	deviceNames := make([]string, 0, len(mfas))
-	otpKey := ""
-	for _, mfa := range mfas {
-		if mfa.MFAType() == "TOTP" {
-			otpKey = mfa.GetTotp().Key
+	// Try authenticating with the two u2f devices.
+	chal, err = srv.Auth().GetMFAAuthenticateChallenge(u.username, u.password)
+	require.NoError(t, err)
+	require.Len(t, chal.U2FChallenges, 2)
+
+	var secondChal *u2f.SignRequest
+	for _, chal := range chal.U2FChallenges {
+		if chal.KeyHandle != firstChal.KeyHandle {
+			secondChal = &chal
+		} else {
+			// Update challenge
+			firstChal = chal
 		}
-		deviceNames = append(deviceNames, mfa.MFAType())
 	}
-	require.ElementsMatch(t, []string{"U2F", "TOTP"}, deviceNames)
+	require.NotEmpty(t, secondChal)
 
-	// Try authenticating with the new u2f device.
-	chal, err := srv.Auth().GetMFAAuthenticateChallenge(u.username, u.password)
-	require.NoError(t, err)
-
-	u2f, err := mockU2FKey.SignResponse(&u2f.SignRequest{
-		Version:   chal.Version,
-		Challenge: chal.Challenge,
-		KeyHandle: chal.KeyHandle,
-		AppID:     chal.AppID,
+	// Test first u2f key.
+	signResponse, err := u.u2fKey.SignResponse(&u2f.SignRequest{
+		Version:   firstChal.Version,
+		Challenge: firstChal.Challenge,
+		KeyHandle: firstChal.KeyHandle,
+		AppID:     firstChal.AppID,
 	})
 	require.NoError(t, err)
 
 	_, err = srv.Auth().authenticateUser(ctx, AuthenticateUserRequest{
 		Username: u.username,
 		U2F: &U2FSignResponseCreds{
-			SignResponse: *u2f,
+			SignResponse: *signResponse,
 		},
 	})
 	require.NoError(t, err)
 
-	// Try authenticating with the previously set up otp device.
-	newOTP, err := totp.GenerateCode(otpKey, srv.Clock().Now().Add(30*time.Second))
+	// Test second u2f key.
+	signResponse, err = newU2FKey.SignResponse(&u2f.SignRequest{
+		Version:   secondChal.Version,
+		Challenge: secondChal.Challenge,
+		KeyHandle: secondChal.KeyHandle,
+		AppID:     secondChal.AppID,
+	})
 	require.NoError(t, err)
+
 	_, err = srv.Auth().authenticateUser(ctx, AuthenticateUserRequest{
 		Username: u.username,
-		OTP: &OTPCreds{
-			Password: u.password,
-			Token:    newOTP,
+		U2F: &U2FSignResponseCreds{
+			SignResponse: *signResponse,
 		},
 	})
 	require.NoError(t, err)

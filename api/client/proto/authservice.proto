@@ -987,6 +987,8 @@ message NewUserAuthCredWithTokenRequest {
     bytes Password = 3;
     // U2FRegisterResponse is U2F registration challenge response.
     U2FRegisterResponse U2FRegisterResponse = 4;
+    // DeviceName is the name of the second factor device.
+    string DeviceName = 5;
 }
 
 // AuthService is authentication/authorization service implementation
