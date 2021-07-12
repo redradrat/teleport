@@ -928,29 +928,31 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 		return ctx, trace.Wrap(err)
 	}
 
+	event := &apievents.SessionReject{
+		Metadata: apievents.Metadata{
+			Type: events.SessionRejectedEvent,
+			Code: events.SessionRejectedCode,
+		},
+		UserMetadata: apievents.UserMetadata{
+			Login:        identityContext.Login,
+			User:         identityContext.TeleportUser,
+			Impersonator: identityContext.Impersonator,
+		},
+		ConnectionMetadata: apievents.ConnectionMetadata{
+			Protocol:   events.EventProtocolSSH,
+			LocalAddr:  ccx.ServerConn.LocalAddr().String(),
+			RemoteAddr: ccx.ServerConn.RemoteAddr().String(),
+		},
+		ServerMetadata: apievents.ServerMetadata{
+			ServerID:        s.uuid,
+			ServerNamespace: s.GetNamespace(),
+		},
+	}
+
 	if err := s.isLockedOut(identityContext); err != nil {
 		if trace.IsAccessDenied(err) {
-			if err := s.EmitAuditEvent(s.ctx, &apievents.SessionReject{
-				Metadata: apievents.Metadata{
-					Type: events.SessionRejectedEvent,
-					Code: events.SessionRejectedCode,
-				},
-				UserMetadata: apievents.UserMetadata{
-					Login:        identityContext.Login,
-					User:         identityContext.TeleportUser,
-					Impersonator: identityContext.Impersonator,
-				},
-				ConnectionMetadata: apievents.ConnectionMetadata{
-					Protocol:   events.EventProtocolSSH,
-					LocalAddr:  ccx.ServerConn.LocalAddr().String(),
-					RemoteAddr: ccx.ServerConn.RemoteAddr().String(),
-				},
-				ServerMetadata: apievents.ServerMetadata{
-					ServerID:        s.uuid,
-					ServerNamespace: s.GetNamespace(),
-				},
-				Reason: err.Error(),
-			}); err != nil {
+			event.Reason = err.Error()
+			if err := s.EmitAuditEvent(s.ctx, event); err != nil {
 				log.WithError(err).Warn("Failed to emit session reject event.")
 			}
 		}
@@ -983,28 +985,9 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 		if strings.Contains(err.Error(), teleport.MaxLeases) {
 			// user has exceeded their max concurrent ssh connections.
 			userSessionLimitHitCount.Inc()
-			if err := s.EmitAuditEvent(s.ctx, &apievents.SessionReject{
-				Metadata: apievents.Metadata{
-					Type: events.SessionRejectedEvent,
-					Code: events.SessionRejectedCode,
-				},
-				UserMetadata: apievents.UserMetadata{
-					Login:        identityContext.Login,
-					User:         identityContext.TeleportUser,
-					Impersonator: identityContext.Impersonator,
-				},
-				ConnectionMetadata: apievents.ConnectionMetadata{
-					Protocol:   events.EventProtocolSSH,
-					LocalAddr:  ccx.ServerConn.LocalAddr().String(),
-					RemoteAddr: ccx.ServerConn.RemoteAddr().String(),
-				},
-				ServerMetadata: apievents.ServerMetadata{
-					ServerID:        s.uuid,
-					ServerNamespace: s.GetNamespace(),
-				},
-				Reason:  events.SessionRejectedReasonMaxConnections,
-				Maximum: maxConnections,
-			}); err != nil {
+			event.Reason = events.SessionRejectedEvent
+			event.Maximum = maxConnections
+			if err := s.EmitAuditEvent(s.ctx, event); err != nil {
 				log.WithError(err).Warn("Failed to emit session reject event.")
 			}
 			err = trace.AccessDenied("too many concurrent ssh connections for user %q (max=%d)",
