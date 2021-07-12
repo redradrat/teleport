@@ -2496,7 +2496,7 @@ func (process *TeleportProcess) initProxyEndpoint(conn *Connector) error {
 	lockWatcher, err := services.NewLockWatcher(process.ExitContext(), services.LockWatcherConfig{
 		ResourceWatcherConfig: services.ResourceWatcherConfig{
 			Component: teleport.ComponentProxy,
-			Log:       process.log,
+			Log:       process.log.WithField(trace.Component, teleport.ComponentProxy),
 			Client:    conn.Client,
 		},
 	})

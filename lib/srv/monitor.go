@@ -162,37 +162,15 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 		idleTime = w.Clock.After(w.ClientIdleTimeout)
 	}
 
-	emitAuditEvent := func(reason string) {
-		event := &apievents.ClientDisconnect{
-			Metadata: apievents.Metadata{
-				Type: events.ClientDisconnectEvent,
-				Code: events.ClientDisconnectCode,
-			},
-			UserMetadata: apievents.UserMetadata{
-				Login: w.Login,
-				User:  w.TeleportUser,
-			},
-			ConnectionMetadata: apievents.ConnectionMetadata{
-				LocalAddr:  w.Conn.LocalAddr().String(),
-				RemoteAddr: w.Conn.RemoteAddr().String(),
-			},
-			ServerMetadata: apievents.ServerMetadata{
-				ServerID: w.ServerID,
-			},
-			Reason: reason,
-		}
-		if err := w.Emitter.EmitAuditEvent(w.Context, event); err != nil {
-			w.Entry.WithError(err).Warn("Failed to emit audit event.")
-		}
-	}
-
 Loop:
 	for {
 		select {
 		// Expired certificate.
 		case <-certTime:
 			reason := fmt.Sprintf("client certificate expired at %v", w.Clock.Now().UTC())
-			emitAuditEvent(reason)
+			if err := w.emitAuditEvent(reason); err != nil {
+				w.Entry.WithError(err).Warn("Failed to emit audit event.")
+			}
 			w.Entry.Debugf("Disconnecting client: %v", reason)
 			w.Conn.Close()
 			return
@@ -207,7 +185,9 @@ Loop:
 					reason = fmt.Sprintf("client is idle for %v, exceeded idle timeout of %v",
 						now.Sub(clientLastActive), w.ClientIdleTimeout)
 				}
-				emitAuditEvent(reason)
+				if err := w.emitAuditEvent(reason); err != nil {
+					w.Entry.WithError(err).Warn("Failed to emit audit event.")
+				}
 				if w.MessageWriter != nil && w.IdleTimeoutMessage != "" {
 					if _, err := w.MessageWriter.WriteString(w.IdleTimeoutMessage); err != nil {
 						w.Entry.WithError(err).Warn("Failed to send idle timeout message.")
@@ -228,14 +208,15 @@ Loop:
 				continue Loop
 			}
 			reason := services.LockInForceMessage(lock)
-			emitAuditEvent(reason)
+			if err := w.emitAuditEvent(reason); err != nil {
+				w.Entry.WithError(err).Warn("Failed to emit audit event.")
+			}
 			if w.MessageWriter != nil {
 				if _, err := w.MessageWriter.WriteString(reason); err != nil {
 					w.Entry.WithError(err).Warn("Failed to send lock-in-force message.")
 				}
 			}
 			w.Entry.Debugf("Disconnecting client: %v.", reason)
-			w.Conn.Close()
 			return
 
 		case <-lockWatch.Done():
@@ -243,12 +224,35 @@ Loop:
 			if w.DisconnectExpiredCert.IsZero() && w.ClientIdleTimeout == 0 {
 				return
 			}
+			continue Loop
 
 		case <-w.Context.Done():
 			w.Entry.Debugf("Releasing associated resources - context has been closed.")
 			return
 		}
 	}
+}
+
+func (w *Monitor) emitAuditEvent(reason string) error {
+	event := &apievents.ClientDisconnect{
+		Metadata: apievents.Metadata{
+			Type: events.ClientDisconnectEvent,
+			Code: events.ClientDisconnectCode,
+		},
+		UserMetadata: apievents.UserMetadata{
+			Login: w.Login,
+			User:  w.TeleportUser,
+		},
+		ConnectionMetadata: apievents.ConnectionMetadata{
+			LocalAddr:  w.Conn.LocalAddr().String(),
+			RemoteAddr: w.Conn.RemoteAddr().String(),
+		},
+		ServerMetadata: apievents.ServerMetadata{
+			ServerID: w.ServerID,
+		},
+		Reason: reason,
+	}
+	return trace.Wrap(w.Emitter.EmitAuditEvent(w.Context, event))
 }
 
 func getLock(lockEvent types.Event) (types.Lock, error) {

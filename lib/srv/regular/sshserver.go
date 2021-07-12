@@ -238,7 +238,7 @@ func (s *Server) isLockedOut(id srv.IdentityContext) error {
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	lock := s.lockWatcher.GetLockInForce(lockTargets...)
+	lock := s.lockWatcher.GetLockInForce(lockTargets)
 	// TODO(andrej): Handle stale lock views.
 	if lock != nil {
 		return trace.AccessDenied(services.LockInForceMessage(lock))
@@ -1167,6 +1167,7 @@ func (s *Server) handleDirectTCPIPRequest(ctx context.Context, ccx *sshutils.Con
 	if err != nil {
 		log.Errorf("Unable to create connection context: %v.", err)
 		writeStderr(channel, "Unable to create connection context.")
+		channel.Close()
 		return
 	}
 	scx.IsTestStub = s.isTestStub
@@ -1296,6 +1297,7 @@ func (s *Server) handleSessionRequests(ctx context.Context, ccx *sshutils.Connec
 	if err != nil {
 		log.WithError(err).Errorf("Unable to create connection context.")
 		writeStderr(ch, "Unable to create connection context.")
+		ch.Close()
 		return
 	}
 	scx.IsTestStub = s.isTestStub
@@ -1595,6 +1597,7 @@ func (s *Server) handleProxyJump(ctx context.Context, ccx *sshutils.ConnectionCo
 	if err != nil {
 		log.Errorf("Unable to create connection context: %v.", err)
 		writeStderr(ch, "Unable to create connection context.")
+		ch.Close()
 		return
 	}
 	scx.IsTestStub = s.isTestStub

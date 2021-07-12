@@ -446,7 +446,7 @@ func (p *lockCollector) Subscribe(targets []types.LockTarget) (types.Watcher, er
 }
 
 // GetLockInForce returns a matching lock in force, nil if not found.
-func (p *lockCollector) GetLockInForce(targets ...types.LockTarget) types.Lock {
+func (p *lockCollector) GetLockInForce(targets []types.LockTarget) types.Lock {
 	p.currentRW.RLock()
 	defer p.currentRW.RUnlock()
 

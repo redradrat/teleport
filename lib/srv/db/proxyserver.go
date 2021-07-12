@@ -450,6 +450,7 @@ func monitorConn(ctx context.Context, cfg monitorConnConfig) (net.Conn, error) {
 		Entry:                 cfg.log,
 	})
 	if err != nil {
+		tc.Close()
 		return nil, trace.Wrap(err)
 	}
 	return tc, nil
