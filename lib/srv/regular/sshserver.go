@@ -232,9 +232,13 @@ func (s *Server) GetLockWatcher() *services.LockWatcher {
 	return s.lockWatcher
 }
 
-// IsLockedOut returns an error if the identity is matched by an active lock.
-func (s *Server) IsLockedOut(id srv.IdentityContext) error {
-	lock := s.lockWatcher.GetLockInForce(srv.ComputeLockTargets(s, id)...)
+// isLockedOut returns an error if the identity is matched by an active lock.
+func (s *Server) isLockedOut(id srv.IdentityContext) error {
+	lockTargets, err := srv.ComputeLockTargets(s, id)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	lock := s.lockWatcher.GetLockInForce(lockTargets...)
 	// TODO(andrej): Handle stale lock views.
 	if lock != nil {
 		return trace.AccessDenied(services.LockInForceMessage(lock))
@@ -924,7 +928,7 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 		return ctx, trace.Wrap(err)
 	}
 
-	if err := s.IsLockedOut(identityContext); err != nil {
+	if err := s.isLockedOut(identityContext); err != nil {
 		if trace.IsAccessDenied(err) {
 			if err := s.EmitAuditEvent(s.ctx, &apievents.SessionReject{
 				Metadata: apievents.Metadata{

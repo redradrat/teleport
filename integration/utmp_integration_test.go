@@ -202,6 +202,16 @@ func newSrvCtx(t *testing.T) *SrvCtx {
 	require.NoError(t, err)
 	s.utmpPath = utmpPath
 
+	lockWatcher, err := services.NewLockWatcher(process.ExitContext(), services.LockWatcherConfig{
+		ResourceWatcherConfig: services.ResourceWatcherConfig{
+			Component: teleport.ComponentNode,
+			Client:    s.nodeClient,
+		},
+	})
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
 	nodeDir := t.TempDir()
 	srv, err := regular.New(
 		utils.NetAddr{AddrNetwork: "tcp", Addr: "127.0.0.1:0"},
@@ -228,6 +238,7 @@ func newSrvCtx(t *testing.T) *SrvCtx {
 		regular.SetBPF(&bpf.NOP{}),
 		regular.SetClock(s.clock),
 		regular.SetUtmpPath(utmpPath, utmpPath),
+		regular.SetLockWatcher(lockWatcher),
 	)
 	require.NoError(t, err)
 	s.srv = srv

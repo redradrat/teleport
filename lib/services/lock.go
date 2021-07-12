@@ -40,7 +40,6 @@ func LockInForceMessage(lock types.Lock) string {
 func LockTargetsFromTLSIdentity(id tlsca.Identity) []types.LockTarget {
 	return append([]types.LockTarget{
 		{User: id.Username},
-		{Cluster: id.RouteToCluster},
 		{MFADevice: id.MFAVerified},
 	}, RolesToLockTargets(id.Groups)...)
 }

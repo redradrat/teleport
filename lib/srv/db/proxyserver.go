@@ -399,7 +399,15 @@ type monitorConnConfig struct {
 // returns a tracking connection that will be auto-terminated in case disconnect_expired_cert or idle timeout is
 // configured, and unmodified client connection otherwise.
 func monitorConn(ctx context.Context, cfg monitorConnConfig) (net.Conn, error) {
-	certExpires := cfg.identity.Expires
+	clusterName, err := cfg.authClient.GetClusterName()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	lockTargets := append(
+		services.LockTargetsFromTLSIdentity(cfg.identity),
+		types.LockTarget{Cluster: clusterName.GetClusterName()},
+	)
+
 	authPref, err := cfg.authClient.GetAuthPreference(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -408,6 +416,8 @@ func monitorConn(ctx context.Context, cfg monitorConnConfig) (net.Conn, error) {
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+
+	certExpires := cfg.identity.Expires
 	var disconnectCertExpired time.Time
 	if !certExpires.IsZero() && cfg.checker.AdjustDisconnectExpiredCert(authPref.GetDisconnectExpiredCert()) {
 		disconnectCertExpired = certExpires
@@ -427,7 +437,7 @@ func monitorConn(ctx context.Context, cfg monitorConnConfig) (net.Conn, error) {
 	// Start monitoring client connection. When client connection is closed the monitor goroutine exits.
 	_, err = srv.StartMonitor(srv.MonitorConfig{
 		LockWatcher:           cfg.lockWatcher,
-		LockTargets:           services.LockTargetsFromTLSIdentity(cfg.identity),
+		LockTargets:           lockTargets,
 		DisconnectExpiredCert: disconnectCertExpired,
 		ClientIdleTimeout:     idleTimeout,
 		Conn:                  cfg.conn,

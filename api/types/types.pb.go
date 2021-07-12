@@ -6701,8 +6701,8 @@ type LockTarget struct {
 	// Role specifies the name of an RBAC role known to the root cluster.
 	// In remote clusters, this constraint is evaluated before translating to local roles.
 	Role string `protobuf:"bytes,2,opt,name=Role,proto3" json:"role,omitempty"`
-	// Cluster specifies the name of a leaf Teleport cluster.
-	// This prevents the root cluster's users from connecting to nodes in the leaf cluster
+	// Cluster specifies the name of a Teleport cluster.
+	// This prevents the root cluster's users from connecting to nodes in a leaf cluster
 	// but does not prevent the leaf cluster from heartbeating back to the root cluster.
 	Cluster string `protobuf:"bytes,3,opt,name=Cluster,proto3" json:"cluster,omitempty"`
 	// Login specifies the name of a local UNIX user.
