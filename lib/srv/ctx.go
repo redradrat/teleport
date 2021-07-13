@@ -920,7 +920,7 @@ func ComputeLockTargets(s Server, id IdentityContext) ([]types.LockTarget, error
 		{Cluster: clusterName.GetClusterName()},
 		{User: id.TeleportUser},
 		{Login: id.Login},
-		{Node: s.ID()},
+		{Node: s.HostUUID()},
 		{MFADevice: id.Certificate.Extensions[teleport.CertExtensionMFAVerified]},
 	}, services.RolesToLockTargets(id.RoleSet.RoleNames())...), nil
 }

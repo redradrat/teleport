@@ -305,6 +305,9 @@ func (s *Server) Start() error {
 		go s.dynamicLabels.Start()
 	}
 
+	// Run the lock watcher's watch loop.
+	go s.lockWatcher.RunWatchLoop()
+
 	// If the server requested connections to it arrive over a reverse tunnel,
 	// don't call Start() which listens on a socket, return right away.
 	if s.useTunnel {
@@ -321,8 +324,6 @@ func (s *Server) Start() error {
 	// address on first heartbeat.
 	go s.heartbeat.Run()
 
-	// Run the lock watcher's watch loop.
-	go s.lockWatcher.RunWatchLoop()
 	return nil
 }
 
@@ -334,8 +335,10 @@ func (s *Server) Serve(l net.Listener) error {
 		go s.dynamicLabels.Start()
 	}
 
-	go s.heartbeat.Run()
+	// Run the lock watcher's watch loop.
 	go s.lockWatcher.RunWatchLoop()
+
+	go s.heartbeat.Run()
 	return s.srv.Serve(l)
 }
 
