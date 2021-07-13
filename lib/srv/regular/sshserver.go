@@ -954,6 +954,11 @@ func (s *Server) HandleNewConn(ctx context.Context, ccx *sshutils.ConnectionCont
 		return ctx, trace.Wrap(err)
 	}
 
+	// Don't apply the following checks in non-node contexts.
+	if s.Component() != teleport.ComponentNode {
+		return ctx, nil
+	}
+
 	maxConnections := identityContext.RoleSet.MaxConnections()
 	if maxConnections == 0 {
 		// concurrent session control is not active, nothing
