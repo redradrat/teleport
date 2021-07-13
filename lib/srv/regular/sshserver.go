@@ -1165,9 +1165,11 @@ func (s *Server) handleDirectTCPIPRequest(ctx context.Context, ccx *sshutils.Con
 	// forwarding is complete.
 	ctx, scx, err := srv.NewServerContext(ctx, ccx, s, identityContext)
 	if err != nil {
-		log.Errorf("Unable to create connection context: %v.", err)
+		log.WithError(err).Error("Unable to create connection context.")
 		writeStderr(channel, "Unable to create connection context.")
-		channel.Close()
+		if err := channel.Close(); err != nil {
+			log.WithError(err).Warn("Failed to close channel.")
+		}
 		return
 	}
 	scx.IsTestStub = s.isTestStub
@@ -1295,9 +1297,11 @@ func (s *Server) handleSessionRequests(ctx context.Context, ccx *sshutils.Connec
 	// session request is complete.
 	ctx, scx, err := srv.NewServerContext(ctx, ccx, s, identityContext)
 	if err != nil {
-		log.WithError(err).Errorf("Unable to create connection context.")
+		log.WithError(err).Error("Unable to create connection context.")
 		writeStderr(ch, "Unable to create connection context.")
-		ch.Close()
+		if err := ch.Close(); err != nil {
+			log.WithError(err).Warn("Failed to close channel.")
+		}
 		return
 	}
 	scx.IsTestStub = s.isTestStub
@@ -1595,9 +1599,11 @@ func (s *Server) handleProxyJump(ctx context.Context, ccx *sshutils.ConnectionCo
 	// session request is complete.
 	ctx, scx, err := srv.NewServerContext(ctx, ccx, s, identityContext)
 	if err != nil {
-		log.Errorf("Unable to create connection context: %v.", err)
+		log.WithError(err).Error("Unable to create connection context.")
 		writeStderr(ch, "Unable to create connection context.")
-		ch.Close()
+		if err := ch.Close(); err != nil {
+			log.WithError(err).Warn("Failed to close channel.")
+		}
 		return
 	}
 	scx.IsTestStub = s.isTestStub

@@ -338,13 +338,13 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 
 	lockTargets, err := ComputeLockTargets(srv, identityContext)
 	if err != nil {
-		child.Close()
-		return nil, nil, trace.Wrap(err)
+		childErr := child.Close()
+		return nil, nil, trace.NewAggregate(err, childErr)
 	}
 	authPref, err := srv.GetAccessPoint().GetAuthPreference(ctx)
 	if err != nil {
-		child.Close()
-		return nil, nil, trace.Wrap(err)
+		childErr := child.Close()
+		return nil, nil, trace.NewAggregate(err, childErr)
 	}
 	disconnectExpiredCert := identityContext.RoleSet.AdjustDisconnectExpiredCert(authPref.GetDisconnectExpiredCert())
 	if !identityContext.CertValidBefore.IsZero() && disconnectExpiredCert {
@@ -366,15 +366,15 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 		Emitter:               child.srv,
 	})
 	if err != nil {
-		child.Close()
-		return nil, nil, trace.Wrap(err)
+		childErr := child.Close()
+		return nil, nil, trace.NewAggregate(err, childErr)
 	}
 
 	// Create pipe used to send command to child process.
 	child.cmdr, child.cmdw, err = os.Pipe()
 	if err != nil {
-		child.Close()
-		return nil, nil, trace.Wrap(err)
+		childErr := child.Close()
+		return nil, nil, trace.NewAggregate(err, childErr)
 	}
 	child.AddCloser(child.cmdr)
 	child.AddCloser(child.cmdw)
@@ -382,8 +382,8 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 	// Create pipe used to signal continue to child process.
 	child.contr, child.contw, err = os.Pipe()
 	if err != nil {
-		child.Close()
-		return nil, nil, trace.Wrap(err)
+		childErr := child.Close()
+		return nil, nil, trace.NewAggregate(err, childErr)
 	}
 	child.AddCloser(child.contr)
 	child.AddCloser(child.contw)

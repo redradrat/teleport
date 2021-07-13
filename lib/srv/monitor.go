@@ -148,7 +148,11 @@ type Monitor struct {
 
 // start starts monitoring connection.
 func (w *Monitor) start(lockWatch types.Watcher) {
-	defer lockWatch.Close()
+	defer func() {
+		if err := lockWatch.Close(); err != nil {
+			w.Entry.WithError(err).Warn("Failed to close lock watcher subscription.")
+		}
+	}()
 	if lock := w.LockWatcher.GetLockInForce(w.LockTargets); lock != nil {
 		w.handleLockInForce(lock)
 		return
@@ -176,7 +180,9 @@ Loop:
 				w.Entry.WithError(err).Warn("Failed to emit audit event.")
 			}
 			w.Entry.Debugf("Disconnecting client: %v", reason)
-			w.Conn.Close()
+			if err := w.Conn.Close(); err != nil {
+				w.Entry.WithError(err).Error("Failed to close connection.")
+			}
 			return
 
 		// Idle timeout.
@@ -198,7 +204,9 @@ Loop:
 					}
 				}
 				w.Entry.Debugf("Disconnecting client: %v", reason)
-				w.Conn.Close()
+				if err := w.Conn.Close(); err != nil {
+					w.Entry.WithError(err).Error("Failed to close connection.")
+				}
 				return
 			}
 			w.Entry.Debugf("Next check in %v", w.ClientIdleTimeout-now.Sub(clientLastActive))
@@ -262,7 +270,9 @@ func (w *Monitor) handleLockInForce(lock types.Lock) {
 		}
 	}
 	w.Entry.Debugf("Disconnecting client: %v.", reason)
-	w.Conn.Close()
+	if err := w.Conn.Close(); err != nil {
+		w.Entry.WithError(err).Error("Failed to close connection.")
+	}
 }
 
 func getLock(lockEvent types.Event) (types.Lock, error) {
