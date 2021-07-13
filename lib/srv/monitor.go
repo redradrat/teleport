@@ -126,7 +126,7 @@ func StartMonitor(cfg MonitorConfig) (*Monitor, error) {
 	w := &Monitor{
 		MonitorConfig: cfg,
 	}
-	lockWatch, err := w.LockWatcher.Subscribe(w.LockTargets)
+	lockWatch, err := w.LockWatcher.Subscribe(w.Context, w.LockTargets)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -149,6 +149,10 @@ type Monitor struct {
 // start starts monitoring connection.
 func (w *Monitor) start(lockWatch types.Watcher) {
 	defer lockWatch.Close()
+	if lock := w.LockWatcher.GetLockInForce(w.LockTargets); lock != nil {
+		w.handleLockInForce(lock)
+		return
+	}
 
 	var certTime <-chan time.Time
 	if !w.DisconnectExpiredCert.IsZero() {
@@ -207,16 +211,7 @@ Loop:
 				w.Entry.WithError(err).Warnf("Failed to extract lock from event %v.", lockEvent)
 				continue Loop
 			}
-			reason := services.LockInForceMessage(lock)
-			if err := w.emitAuditEvent(reason); err != nil {
-				w.Entry.WithError(err).Warn("Failed to emit audit event.")
-			}
-			if w.MessageWriter != nil {
-				if _, err := w.MessageWriter.WriteString(reason); err != nil {
-					w.Entry.WithError(err).Warn("Failed to send lock-in-force message.")
-				}
-			}
-			w.Entry.Debugf("Disconnecting client: %v.", reason)
+			w.handleLockInForce(lock)
 			return
 
 		case <-lockWatch.Done():
@@ -253,6 +248,21 @@ func (w *Monitor) emitAuditEvent(reason string) error {
 		Reason: reason,
 	}
 	return trace.Wrap(w.Emitter.EmitAuditEvent(w.Context, event))
+}
+
+func (w *Monitor) handleLockInForce(lock types.Lock) {
+	// TODO(andrej): Handle stale lock views.
+	reason := services.LockInForceMessage(lock)
+	if err := w.emitAuditEvent(reason); err != nil {
+		w.Entry.WithError(err).Warn("Failed to emit audit event.")
+	}
+	if w.MessageWriter != nil {
+		if _, err := w.MessageWriter.WriteString(reason); err != nil {
+			w.Entry.WithError(err).Warn("Failed to send lock-in-force message.")
+		}
+	}
+	w.Entry.Debugf("Disconnecting client: %v.", reason)
+	w.Conn.Close()
 }
 
 func getLock(lockEvent types.Event) (types.Lock, error) {

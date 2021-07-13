@@ -422,12 +422,12 @@ type lockCollector struct {
 }
 
 // Subscribe is used to subscribe to the lock updates.
-func (p *lockCollector) Subscribe(targets []types.LockTarget) (types.Watcher, error) {
+func (p *lockCollector) Subscribe(ctx context.Context, targets []types.LockTarget) (types.Watcher, error) {
 	watchKinds, err := lockTargetsToWatchKinds(targets)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	sub, err := p.fanout.NewWatcher(p.ctx, types.Watch{Kinds: watchKinds})
+	sub, err := p.fanout.NewWatcher(ctx, types.Watch{Kinds: watchKinds})
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -436,12 +436,11 @@ func (p *lockCollector) Subscribe(targets []types.LockTarget) (types.Watcher, er
 		if event.Type != types.OpInit {
 			return nil, trace.BadParameter("unexpected event type %s", event.Type)
 		}
-	case <-time.After(time.Minute):
+	case <-time.After(defaults.LowResPollingPeriod):
 		return nil, trace.LimitExceeded("lock watcher subscription failed to initialize")
 	case <-sub.Done():
 		return nil, trace.Wrap(sub.Error())
 	}
-	p.Log.Debug("New lock watcher subscription initialized.")
 	return sub, nil
 }
 

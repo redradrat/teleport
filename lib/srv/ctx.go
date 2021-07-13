@@ -303,7 +303,6 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 	}
 
 	cancelContext, cancel := context.WithCancel(ctx)
-
 	child := &ServerContext{
 		ConnectionContext:      parent,
 		id:                     int(atomic.AddInt32(&ctxID, int32(1))),
@@ -317,20 +316,6 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 		clientIdleTimeout:      identityContext.RoleSet.AdjustClientIdleTimeout(netConfig.GetClientIdleTimeout()),
 		cancelContext:          cancelContext,
 		cancel:                 cancel,
-	}
-
-	lockTargets, err := ComputeLockTargets(srv, identityContext)
-	if err != nil {
-		return nil, nil, trace.Wrap(err)
-	}
-
-	authPref, err := srv.GetAccessPoint().GetAuthPreference(ctx)
-	if err != nil {
-		return nil, nil, trace.Wrap(err)
-	}
-	disconnectExpiredCert := identityContext.RoleSet.AdjustDisconnectExpiredCert(authPref.GetDisconnectExpiredCert())
-	if !identityContext.CertValidBefore.IsZero() && disconnectExpiredCert {
-		child.disconnectExpiredCert = identityContext.CertValidBefore
 	}
 
 	fields := log.Fields{
@@ -351,6 +336,20 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 		trace.ComponentFields: fields,
 	})
 
+	lockTargets, err := ComputeLockTargets(srv, identityContext)
+	if err != nil {
+		child.Close()
+		return nil, nil, trace.Wrap(err)
+	}
+	authPref, err := srv.GetAccessPoint().GetAuthPreference(ctx)
+	if err != nil {
+		child.Close()
+		return nil, nil, trace.Wrap(err)
+	}
+	disconnectExpiredCert := identityContext.RoleSet.AdjustDisconnectExpiredCert(authPref.GetDisconnectExpiredCert())
+	if !identityContext.CertValidBefore.IsZero() && disconnectExpiredCert {
+		child.disconnectExpiredCert = identityContext.CertValidBefore
+	}
 	child.Monitor, err = StartMonitor(MonitorConfig{
 		LockWatcher:           child.srv.GetLockWatcher(),
 		LockTargets:           lockTargets,
