@@ -493,9 +493,7 @@ func (p *lockCollector) getResourcesAndUpdateCurrent() error {
 	defer p.currentRW.Unlock()
 	p.current = newCurrent
 	for _, lock := range p.current {
-		if lock.IsInForce(p.Clock) {
-			p.fanout.Emit(types.Event{Type: types.OpPut, Resource: lock})
-		}
+		p.fanout.Emit(types.Event{Type: types.OpPut, Resource: lock})
 	}
 	return nil
 }
