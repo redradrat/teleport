@@ -537,6 +537,8 @@ func (s *remoteSite) Dial(params DialParams) (net.Conn, error) {
 	if params.ConnType == types.NodeTunnel && services.IsRecordAtProxy(recConfig.GetMode()) {
 		return s.dialWithAgent(params)
 	}
+
+	// Attempt to perform a direct TCP dial.
 	return s.DialTCP(params)
 }
 

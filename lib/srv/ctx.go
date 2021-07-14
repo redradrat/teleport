@@ -318,6 +318,16 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 		cancel:                 cancel,
 	}
 
+	authPref, err := srv.GetAccessPoint().GetAuthPreference(ctx)
+	if err != nil {
+		childErr := child.Close()
+		return nil, nil, trace.NewAggregate(err, childErr)
+	}
+	disconnectExpiredCert := identityContext.RoleSet.AdjustDisconnectExpiredCert(authPref.GetDisconnectExpiredCert())
+	if !identityContext.CertValidBefore.IsZero() && disconnectExpiredCert {
+		child.disconnectExpiredCert = identityContext.CertValidBefore
+	}
+
 	fields := log.Fields{
 		"local":        child.ServerConn.LocalAddr(),
 		"remote":       child.ServerConn.RemoteAddr(),
@@ -340,15 +350,6 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 	if err != nil {
 		childErr := child.Close()
 		return nil, nil, trace.NewAggregate(err, childErr)
-	}
-	authPref, err := srv.GetAccessPoint().GetAuthPreference(ctx)
-	if err != nil {
-		childErr := child.Close()
-		return nil, nil, trace.NewAggregate(err, childErr)
-	}
-	disconnectExpiredCert := identityContext.RoleSet.AdjustDisconnectExpiredCert(authPref.GetDisconnectExpiredCert())
-	if !identityContext.CertValidBefore.IsZero() && disconnectExpiredCert {
-		child.disconnectExpiredCert = identityContext.CertValidBefore
 	}
 	child.Monitor, err = StartMonitor(MonitorConfig{
 		LockWatcher:           child.srv.GetLockWatcher(),
