@@ -225,7 +225,7 @@ func withAllowRules(t *testing.T, srv *TestAuthServer, allowRules []types.Rule) 
 	require.NoError(t, err)
 
 	localUser := LocalUser{Username: username, Identity: tlsca.Identity{Username: username}}
-	authContext, err := contextForLocalUser(localUser, srv.AuthServer.Identity, srv.AuthServer.Access)
+	authContext, err := contextForLocalUser(localUser, srv.AuthServer)
 	require.NoError(t, err)
 
 	return &ServerWithRoles{
@@ -296,3 +296,23 @@ func TestListNodes(t *testing.T) {
 	expectedNodes = append(testNodes[:3], testNodes[4:6]...)
 	require.Empty(t, cmp.Diff(expectedNodes, nodes))
 }
+
+//func serverWithAllowRules(t *testing.T, srv *TestAuthServer, allowRules []types.Rule) *ServerWithRoles {
+//	username := "some-user"
+//	_, role, err := CreateUserAndRoleWithoutRoles(srv.AuthServer, username, nil)
+//	require.NoError(t, err)
+//	role.SetRules(types.Allow, allowRules)
+//	err = srv.AuthServer.UpsertRole(context.TODO(), role)
+//	require.NoError(t, err)
+//
+//	localUser := LocalUser{Username: username, Identity: tlsca.Identity{Username: username}}
+//	authContext, err := contextForLocalUser(localUser, srv.AuthServer)
+//	require.NoError(t, err)
+//
+//	return &ServerWithRoles{
+//		authServer: srv.AuthServer,
+//		sessions:   srv.SessionServer,
+//		alog:       srv.AuditLog,
+//		context:    *authContext,
+//	}
+//}
