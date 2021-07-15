@@ -145,7 +145,7 @@ func (p *resourceWatcher) RunWatchLoop() {
 		default:
 		}
 		if err != nil {
-			p.Log.WithError(err).Warning("Restart watch on error.")
+			p.Log.Warningf("Restart watch on error: %v.", err)
 		}
 	}
 }
