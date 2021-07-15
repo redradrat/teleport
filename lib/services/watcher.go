@@ -483,10 +483,9 @@ func (p *lockCollector) getResourcesAndUpdateCurrent() error {
 	}
 	newCurrent := map[string]types.Lock{}
 	for _, lock := range locks {
-		if !lock.IsInForce(p.Clock) {
-			continue
+		if lock.IsInForce(p.Clock) {
+			newCurrent[lock.GetName()] = lock
 		}
-		newCurrent[lock.GetName()] = lock
 	}
 
 	p.currentRW.Lock()
