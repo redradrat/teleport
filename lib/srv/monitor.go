@@ -170,7 +170,6 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 		idleTime = w.Clock.After(w.ClientIdleTimeout)
 	}
 
-Loop:
 	for {
 		select {
 		// Expired certificate.
@@ -216,21 +215,14 @@ Loop:
 		case lockEvent := <-lockWatch.Events():
 			lock, err := getLock(lockEvent)
 			if err != nil {
-				w.Entry.WithError(err).Warnf("Failed to extract lock from event %v.", lockEvent)
-				continue Loop
+				w.Entry.WithError(err).Warnf("Failed to extract lock from event: %v.", lockEvent)
+				continue
 			}
 			w.handleLockInForce(lock)
 			return
 
-		case <-lockWatch.Done():
-			w.Entry.WithError(lockWatch.Error()).Warn("Lock watcher subscription was closed.")
-			if w.DisconnectExpiredCert.IsZero() && w.ClientIdleTimeout == 0 {
-				return
-			}
-			continue Loop
-
 		case <-w.Context.Done():
-			w.Entry.Debugf("Releasing associated resources - context has been closed.")
+			w.Entry.Debug("Releasing associated resources - context has been closed.")
 			return
 		}
 	}
