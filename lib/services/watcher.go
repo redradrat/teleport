@@ -444,13 +444,14 @@ func (p *lockCollector) Subscribe(ctx context.Context, targets []types.LockTarge
 	return sub, nil
 }
 
-// GetLockInForce returns a matching lock in force, nil if not found.
-func (p *lockCollector) GetLockInForce(targets []types.LockTarget) types.Lock {
+// GetSomeLockInForce returns one of the matching locks that are in force,
+// nil if not found.
+func (p *lockCollector) GetSomeLockInForce(targets []types.LockTarget) types.Lock {
 	p.currentRW.RLock()
 	defer p.currentRW.RUnlock()
 
 	for _, lock := range p.current {
-		if !lock.IsInForce(p.Clock) {
+		if !lock.IsInForce(p.Clock.Now()) {
 			continue
 		}
 		if len(targets) == 0 {
@@ -483,7 +484,7 @@ func (p *lockCollector) getResourcesAndUpdateCurrent() error {
 	}
 	newCurrent := map[string]types.Lock{}
 	for _, lock := range locks {
-		if lock.IsInForce(p.Clock) {
+		if lock.IsInForce(p.Clock.Now()) {
 			newCurrent[lock.GetName()] = lock
 		}
 	}
@@ -517,7 +518,7 @@ func (p *lockCollector) processEventAndUpdateCurrent(event types.Event) {
 			p.Log.Warningf("Unexpected resource type %T.", event.Resource)
 			return
 		}
-		if lock.IsInForce(p.Clock) {
+		if lock.IsInForce(p.Clock.Now()) {
 			p.current[lock.GetName()] = lock
 			p.fanout.Emit(event)
 		} else {

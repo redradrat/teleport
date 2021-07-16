@@ -153,7 +153,7 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 			w.Entry.WithError(err).Warn("Failed to close lock watcher subscription.")
 		}
 	}()
-	if lock := w.LockWatcher.GetLockInForce(w.LockTargets); lock != nil {
+	if lock := w.LockWatcher.GetSomeLockInForce(w.LockTargets); lock != nil {
 		w.handleLockInForce(lock)
 		return
 	}

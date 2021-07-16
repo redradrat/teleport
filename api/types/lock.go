@@ -25,7 +25,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
 	"github.com/gravitational/trace"
-	"github.com/jonboulle/clockwork"
 )
 
 // Lock configures locking out of a particular access vector.
@@ -47,8 +46,8 @@ type Lock interface {
 	// SetLockExpiry sets the lock's expiry.
 	SetLockExpiry(*time.Time)
 
-	// IsInForce returns whether the lock is in force.
-	IsInForce(clockwork.Clock) bool
+	// IsInForce returns whether the lock is in force at a particular time.
+	IsInForce(time.Time) bool
 }
 
 // NewLock is a convenience method to create a Lock resource.
@@ -150,12 +149,12 @@ func (c *LockV2) SetLockExpiry(expiry *time.Time) {
 	c.Spec.Expires = expiry
 }
 
-// IsInForce returns whether the lock is in force.
-func (c *LockV2) IsInForce(clock clockwork.Clock) bool {
+// IsInForce returns whether the lock is in force at a particular time.
+func (c *LockV2) IsInForce(t time.Time) bool {
 	if c.Spec.Expires == nil {
 		return true
 	}
-	return clock.Now().Before(*c.Spec.Expires)
+	return t.Before(*c.Spec.Expires)
 }
 
 // setStaticFields sets static resource header and metadata fields.
