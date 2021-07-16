@@ -435,7 +435,7 @@ func monitorConn(ctx context.Context, cfg monitorConnConfig) (net.Conn, error) {
 	}
 
 	// Start monitoring client connection. When client connection is closed the monitor goroutine exits.
-	_, err = srv.StartMonitor(srv.MonitorConfig{
+	err = srv.StartMonitor(srv.MonitorConfig{
 		LockWatcher:           cfg.lockWatcher,
 		LockTargets:           lockTargets,
 		DisconnectExpiredCert: disconnectCertExpired,

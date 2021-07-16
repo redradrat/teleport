@@ -280,11 +280,6 @@ type ServerContext struct {
 	// port to connect to in a "direct-tcpip" request. This value is only
 	// populated for port forwarding requests.
 	DstAddr string
-
-	// Monitor is a handle to the idle timeout monitor that is watching this
-	// session context. May be nil if there is no set idle timeout or we are
-	// not monitoring certificate expiry.
-	Monitor *Monitor
 }
 
 // NewServerContext creates a new *ServerContext which is used to pass and
@@ -292,7 +287,7 @@ type ServerContext struct {
 // the ServerContext is closed.  The ctx parameter should be a child of the ctx
 // associated with the scope of the parent ConnectionContext to ensure that
 // cancellation of the ConnectionContext propagates to the ServerContext.
-func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, srv Server, identityContext IdentityContext) (context.Context, *ServerContext, error) {
+func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, srv Server, identityContext IdentityContext, monitorOpts ...func(*MonitorConfig)) (context.Context, *ServerContext, error) {
 	netConfig, err := srv.GetAccessPoint().GetClusterNetworkingConfig(ctx)
 	if err != nil {
 		return nil, nil, trace.Wrap(err)
@@ -351,7 +346,7 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 		childErr := child.Close()
 		return nil, nil, trace.NewAggregate(err, childErr)
 	}
-	child.Monitor, err = StartMonitor(MonitorConfig{
+	monitorConfig := MonitorConfig{
 		LockWatcher:           child.srv.GetLockWatcher(),
 		LockTargets:           lockTargets,
 		DisconnectExpiredCert: child.disconnectExpiredCert,
@@ -365,7 +360,11 @@ func NewServerContext(ctx context.Context, parent *sshutils.ConnectionContext, s
 		ServerID:              child.srv.ID(),
 		Entry:                 child.Entry,
 		Emitter:               child.srv,
-	})
+	}
+	for _, opt := range monitorOpts {
+		opt(&monitorConfig)
+	}
+	err = StartMonitor(monitorConfig)
 	if err != nil {
 		childErr := child.Close()
 		return nil, nil, trace.NewAggregate(err, childErr)

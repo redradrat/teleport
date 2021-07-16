@@ -87,6 +87,9 @@ type MonitorConfig struct {
 	Entry log.FieldLogger
 	// IdleTimeoutMessage is sent to the client when the idle timeout expires.
 	IdleTimeoutMessage string
+	// MessageWriter wraps a channel to send text messages to the client. Use
+	// for disconnection messages, etc.
+	MessageWriter io.StringWriter
 }
 
 // CheckAndSetDefaults checks values and sets defaults
@@ -119,19 +122,19 @@ func (m *MonitorConfig) CheckAndSetDefaults() error {
 }
 
 // StartMonitor starts a new monitor.
-func StartMonitor(cfg MonitorConfig) (*Monitor, error) {
+func StartMonitor(cfg MonitorConfig) error {
 	if err := cfg.CheckAndSetDefaults(); err != nil {
-		return nil, trace.Wrap(err)
+		return trace.Wrap(err)
 	}
 	w := &Monitor{
 		MonitorConfig: cfg,
 	}
 	lockWatch, err := w.LockWatcher.Subscribe(w.Context, w.LockTargets...)
 	if err != nil {
-		return nil, trace.Wrap(err)
+		return trace.Wrap(err)
 	}
 	go w.start(lockWatch)
-	return w, nil
+	return nil
 }
 
 // Monitor monitors the activity on a single connection and disconnects
@@ -140,10 +143,6 @@ func StartMonitor(cfg MonitorConfig) (*Monitor, error) {
 type Monitor struct {
 	// MonitorConfig is a connection monitor configuration
 	MonitorConfig
-
-	// MessageWriter wraps a channel to send text messages to the client. Use
-	// for disconnection messages, etc.
-	MessageWriter io.StringWriter
 }
 
 // start starts monitoring connection.

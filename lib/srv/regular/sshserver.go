@@ -1288,9 +1288,19 @@ Loop:
 // channel has been created this function's loop handles all the "exec",
 // "subsystem" and "shell" requests.
 func (s *Server) handleSessionRequests(ctx context.Context, ccx *sshutils.ConnectionContext, identityContext srv.IdentityContext, ch ssh.Channel, in <-chan *ssh.Request) {
+	netConfig, err := s.GetAccessPoint().GetClusterNetworkingConfig(ctx)
+	if err != nil {
+		log.Errorf("Unable to fetch cluster networking config: %v.", err)
+		writeStderr(ch, "Unable to fetch cluster networking configuration.")
+		return
+	}
+
 	// Create context for this channel. This context will be closed when the
 	// session request is complete.
-	ctx, scx, err := srv.NewServerContext(ctx, ccx, s, identityContext)
+	ctx, scx, err := srv.NewServerContext(ctx, ccx, s, identityContext, func(cfg *srv.MonitorConfig) {
+		cfg.IdleTimeoutMessage = netConfig.GetClientIdleTimeoutMessage()
+		cfg.MessageWriter = &stderrWriter{channel: ch}
+	})
 	if err != nil {
 		log.WithError(err).Error("Unable to create connection context.")
 		writeStderr(ch, "Unable to create connection context.")
@@ -1305,18 +1315,6 @@ func (s *Server) handleSessionRequests(ctx context.Context, ccx *sshutils.Connec
 	defer scx.Close()
 
 	ch = scx.TrackActivity(ch)
-
-	netConfig, err := s.GetAccessPoint().GetClusterNetworkingConfig(ctx)
-	if err != nil {
-		log.Errorf("Unable to fetch cluster networking config: %v.", err)
-		writeStderr(ch, "Unable to fetch cluster networking configuration.")
-		return
-	}
-
-	if scx.Monitor != nil {
-		scx.Monitor.IdleTimeoutMessage = netConfig.GetClientIdleTimeoutMessage()
-		scx.Monitor.MessageWriter = &stderrWriter{channel: ch}
-	}
 
 	// The keep-alive loop will keep pinging the remote server and after it has
 	// missed a certain number of keep-alive requests it will cancel the
