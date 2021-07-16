@@ -270,7 +270,6 @@ type ServerOption func(s *Server) error
 // Close closes listening socket and stops accepting connections
 func (s *Server) Close() error {
 	s.cancel()
-	s.lockWatcher.Close()
 	s.reg.Close()
 	if s.heartbeat != nil {
 		if err := s.heartbeat.Close(); err != nil {
@@ -286,7 +285,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// wait until connections drain off
 	err := s.srv.Shutdown(ctx)
 	s.cancel()
-	s.lockWatcher.Close()
 	s.reg.Close()
 	if s.heartbeat != nil {
 		if err := s.heartbeat.Close(); err != nil {
@@ -304,9 +302,6 @@ func (s *Server) Start() error {
 	if s.dynamicLabels != nil {
 		go s.dynamicLabels.Start()
 	}
-
-	// Run the lock watcher's watch loop.
-	go s.lockWatcher.RunWatchLoop()
 
 	// If the server requested connections to it arrive over a reverse tunnel,
 	// don't call Start() which listens on a socket, return right away.
@@ -334,9 +329,6 @@ func (s *Server) Serve(l net.Listener) error {
 	if s.dynamicLabels != nil {
 		go s.dynamicLabels.Start()
 	}
-
-	// Run the lock watcher's watch loop.
-	go s.lockWatcher.RunWatchLoop()
 
 	go s.heartbeat.Run()
 	return s.srv.Serve(l)

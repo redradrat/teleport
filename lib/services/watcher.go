@@ -102,6 +102,7 @@ func newResourceWatcher(collector resourceCollector, cfg ResourceWatcherConfig) 
 		retry:                 retry,
 		ResetC:                make(chan struct{}),
 	}
+	go p.runWatchLoop()
 	return p, nil
 }
 
@@ -128,8 +129,8 @@ func (p *resourceWatcher) Close() {
 	p.ResourceWatcherConfig.cancel()
 }
 
-// RunWatchLoop runs a watch loop.
-func (p *resourceWatcher) RunWatchLoop() {
+// runWatchLoop runs a watch loop.
+func (p *resourceWatcher) runWatchLoop() {
 	for {
 		p.Log.WithField("retry", p.retry).Debug("Starting watch.")
 		err := p.watch()

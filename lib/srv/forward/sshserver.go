@@ -521,7 +521,6 @@ func (s *Server) Serve() {
 		CloseCancel:  func() { s.connectionContext.Close() },
 	})
 
-	go s.lockWatcher.RunWatchLoop()
 	go s.handleConnection(ctx, chans, reqs)
 }
 
@@ -549,8 +548,6 @@ func (s *Server) Close() error {
 			errs = append(errs, err)
 		}
 	}
-
-	s.lockWatcher.Close()
 
 	// Signal to the outside world that this server is closed
 	s.closeCancel()

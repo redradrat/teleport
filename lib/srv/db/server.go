@@ -270,7 +270,6 @@ func (s *Server) Start() error {
 	for _, dynamicLabel := range s.dynamicLabels {
 		go dynamicLabel.Start()
 	}
-	go s.cfg.LockWatcher.RunWatchLoop()
 	for _, heartbeat := range s.heartbeats {
 		go heartbeat.Run()
 	}
@@ -283,8 +282,6 @@ func (s *Server) Close() error {
 	for _, dynamicLabel := range s.dynamicLabels {
 		dynamicLabel.Close()
 	}
-	// Stop the lock watcher.
-	s.cfg.LockWatcher.Close()
 	// Signal to all goroutines to stop.
 	s.closeFunc()
 	// Stop the heartbeats.

@@ -60,8 +60,6 @@ func TestProxyWatcher(t *testing.T) {
 		ProxiesC: make(chan []types.Server, 10),
 	})
 	require.NoError(t, err)
-
-	go w.RunWatchLoop()
 	t.Cleanup(w.Close)
 
 	// Since no proxy is yet present, the ProxyWatcher should immediately
@@ -155,8 +153,6 @@ func TestLockWatcher(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-
-	go w.RunWatchLoop()
 	t.Cleanup(w.Close)
 
 	// Subscribe to lock watcher updates.
