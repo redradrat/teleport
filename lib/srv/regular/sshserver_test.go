@@ -335,6 +335,71 @@ func TestInactivityTimeout(t *testing.T) {
 	require.Equal(t, timeoutMessage, string(text))
 }
 
+func TestLockInForce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+
+	// If all goes well, the client will be closed by the time cleanup happens,
+	// so change the assertion on closing the client to expect it to fail.
+	f.ssh.assertCltClose = require.Error
+
+	se, err := f.ssh.clt.NewSession()
+	require.NoError(t, err)
+
+	stderr, err := se.StderrPipe()
+	require.NoError(t, err)
+	stdErrCh := startReadAll(stderr)
+
+	endCh := make(chan error)
+	go func() { endCh <- f.ssh.clt.Wait() }()
+
+	lock, err := types.NewLock("test-lock", types.LockSpecV2{
+		Target: types.LockTarget{Login: f.user},
+	})
+	require.NoError(t, err)
+	require.NoError(t, f.testSrv.Auth().UpsertLock(ctx, lock))
+
+	// When I let the session idle (with the clock running at approx 10x speed)...
+	sessionHasFinished := func() bool {
+		f.clock.Advance(1 * time.Second)
+		select {
+		case <-endCh:
+			return true
+
+		default:
+			return false
+		}
+	}
+	require.Eventually(t, sessionHasFinished, 1*time.Second, 100*time.Millisecond,
+		"Timed out waiting for session to finish")
+
+	// Expect that the idle timeout has been delivered via stderr
+	text, err := waitForBytes(stdErrCh)
+	require.NoError(t, err)
+	require.Equal(t, services.LockInForceMessage(lock), string(text))
+
+	// As long as the lock is in force, new sessions cannot be opened.
+	newClient, err := ssh.Dial("tcp", f.ssh.srvAddress, f.ssh.cltConfig)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		// The client is expected to be closed by the lock monitor therefore expect
+		// an error on this second attempt.
+		require.Error(t, newClient.Close())
+	})
+	_, err = newClient.NewSession()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), services.LockInForceMessage(lock))
+
+	// Once the lock is lifted, new sessions should go through without error.
+	require.NoError(t, f.testSrv.Auth().DeleteLock(ctx, "test-lock"))
+	newClient2, err := ssh.Dial("tcp", f.ssh.srvAddress, f.ssh.cltConfig)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, newClient2.Close()) })
+	_, err = newClient2.NewSession()
+	require.NoError(t, err)
+}
+
 // TestDirectTCPIP ensures that the server can create a "direct-tcpip"
 // channel to the target address. The "direct-tcpip" channel is what port
 // forwarding is built upon.
@@ -1875,7 +1940,7 @@ func waitForSites(s reversetunnel.Tunnel, count int) error {
 func newLockWatcher(ctx context.Context, t *testing.T, client types.Events) *services.LockWatcher {
 	lockWatcher, err := services.NewLockWatcher(ctx, services.LockWatcherConfig{
 		ResourceWatcherConfig: services.ResourceWatcherConfig{
-			Component: "dummy-component",
+			Component: "test",
 			Client:    client,
 		},
 	})

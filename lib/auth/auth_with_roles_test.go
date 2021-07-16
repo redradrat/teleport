@@ -238,7 +238,7 @@ func withAllowRules(t *testing.T, srv *TestAuthServer, allowRules []types.Rule) 
 
 func resourceDiff(res1, res2 types.Resource) string {
 	return cmp.Diff(res1, res2,
-		cmpopts.IgnoreFields(types.Metadata{}, "ID", "Namespace"),
+		cmpopts.IgnoreFields(types.Metadata{}, "ID"),
 		cmpopts.EquateEmpty())
 }
 

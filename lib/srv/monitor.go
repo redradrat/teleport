@@ -126,7 +126,7 @@ func StartMonitor(cfg MonitorConfig) (*Monitor, error) {
 	w := &Monitor{
 		MonitorConfig: cfg,
 	}
-	lockWatch, err := w.LockWatcher.Subscribe(w.Context, w.LockTargets)
+	lockWatch, err := w.LockWatcher.Subscribe(w.Context, w.LockTargets...)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -153,7 +153,7 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 			w.Entry.WithError(err).Warn("Failed to close lock watcher subscription.")
 		}
 	}()
-	if lock := w.LockWatcher.GetSomeLockInForce(w.LockTargets); lock != nil {
+	if lock := w.LockWatcher.GetSomeLockInForce(w.LockTargets...); lock != nil {
 		w.handleLockInForce(lock)
 		return
 	}
@@ -175,7 +175,7 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 		// Expired certificate.
 		case <-certTime:
 			reason := fmt.Sprintf("client certificate expired at %v", w.Clock.Now().UTC())
-			if err := w.emitAuditEvent(reason); err != nil {
+			if err := w.emitDisconnectEvent(reason); err != nil {
 				w.Entry.WithError(err).Warn("Failed to emit audit event.")
 			}
 			w.Entry.Debugf("Disconnecting client: %v", reason)
@@ -194,7 +194,7 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 					reason = fmt.Sprintf("client is idle for %v, exceeded idle timeout of %v",
 						now.Sub(clientLastActive), w.ClientIdleTimeout)
 				}
-				if err := w.emitAuditEvent(reason); err != nil {
+				if err := w.emitDisconnectEvent(reason); err != nil {
 					w.Entry.WithError(err).Warn("Failed to emit audit event.")
 				}
 				if w.MessageWriter != nil && w.IdleTimeoutMessage != "" {
@@ -228,7 +228,7 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 	}
 }
 
-func (w *Monitor) emitAuditEvent(reason string) error {
+func (w *Monitor) emitDisconnectEvent(reason string) error {
 	event := &apievents.ClientDisconnect{
 		Metadata: apievents.Metadata{
 			Type: events.ClientDisconnectEvent,
@@ -253,7 +253,7 @@ func (w *Monitor) emitAuditEvent(reason string) error {
 func (w *Monitor) handleLockInForce(lock types.Lock) {
 	// TODO(andrej): Handle stale lock views.
 	reason := services.LockInForceMessage(lock)
-	if err := w.emitAuditEvent(reason); err != nil {
+	if err := w.emitDisconnectEvent(reason); err != nil {
 		w.Entry.WithError(err).Warn("Failed to emit audit event.")
 	}
 	if w.MessageWriter != nil {

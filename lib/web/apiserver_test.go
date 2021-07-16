@@ -239,6 +239,14 @@ func (s *WebSuite) SetUpTest(c *C) {
 	revTunListener, err := net.Listen("tcp", fmt.Sprintf("%v:0", s.server.ClusterName()))
 	c.Assert(err, IsNil)
 
+	proxyLockWatcher, err := services.NewLockWatcher(ctx, services.LockWatcherConfig{
+		ResourceWatcherConfig: services.ResourceWatcherConfig{
+			Component: teleport.ComponentProxy,
+			Client:    s.proxyClient,
+		},
+	})
+	c.Assert(err, IsNil)
+
 	revTunServer, err := reversetunnel.NewServer(reversetunnel.Config{
 		ID:                    node.ID(),
 		Listener:              revTunListener,
@@ -251,17 +259,10 @@ func (s *WebSuite) SetUpTest(c *C) {
 		NewCachingAccessPoint: auth.NoCache,
 		DirectClusters:        []reversetunnel.DirectCluster{{Name: s.server.ClusterName(), Client: s.proxyClient}},
 		DataDir:               c.MkDir(),
+		LockWatcher:           proxyLockWatcher,
 	})
 	c.Assert(err, IsNil)
 	s.proxyTunnel = revTunServer
-
-	proxyLockWatcher, err := services.NewLockWatcher(ctx, services.LockWatcherConfig{
-		ResourceWatcherConfig: services.ResourceWatcherConfig{
-			Component: teleport.ComponentProxy,
-			Client:    s.proxyClient,
-		},
-	})
-	c.Assert(err, IsNil)
 
 	// proxy server:
 	s.proxy, err = regular.New(

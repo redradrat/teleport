@@ -238,7 +238,7 @@ func (s *Server) isLockedOut(id srv.IdentityContext) error {
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	lock := s.lockWatcher.GetSomeLockInForce(lockTargets)
+	lock := s.lockWatcher.GetSomeLockInForce(lockTargets...)
 	// TODO(andrej): Handle stale lock views.
 	if lock != nil {
 		return trace.AccessDenied(services.LockInForceMessage(lock))

@@ -33,8 +33,8 @@ import (
 // resourceCollector is a generic interface for maintaining an up-to-date view
 // of a resource set being monitored. Used in conjunction with resourceWatcher.
 type resourceCollector interface {
-	// WatchKinds specifies the resource kinds to watch.
-	WatchKinds() []types.WatchKind
+	// resourceKind specifies the resource kind to watch.
+	resourceKind() string
 	// getResourcesAndUpdateCurrent is called when the resources should be
 	// (re-)fetched directly.
 	getResourcesAndUpdateCurrent() error
@@ -95,7 +95,7 @@ func newResourceWatcher(collector resourceCollector, cfg ResourceWatcherConfig) 
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	cfg.Log = cfg.Log.WithField("watch-kinds", collector.WatchKinds())
+	cfg.Log = cfg.Log.WithField("resource-kind", collector.resourceKind())
 	p := &resourceWatcher{
 		resourceCollector:     collector,
 		ResourceWatcherConfig: cfg,
@@ -156,7 +156,7 @@ func (p *resourceWatcher) watch() error {
 	watcher, err := p.Client.NewWatcher(p.ctx, types.Watch{
 		Name:            p.Component,
 		MetricComponent: p.Component,
-		Kinds:           p.WatchKinds(),
+		Kinds:           []types.WatchKind{{Kind: p.resourceKind()}},
 	})
 	if err != nil {
 		return trace.Wrap(err)
@@ -280,13 +280,9 @@ func (p *proxyCollector) GetCurrent() []types.Server {
 	return serverMapValues(p.current)
 }
 
-// WatchKinds specifies the resource kinds to watch.
-func (p *proxyCollector) WatchKinds() []types.WatchKind {
-	return []types.WatchKind{
-		{
-			Kind: types.KindProxy,
-		},
-	}
+// resourceKind specifies the resource kind to watch.
+func (p *proxyCollector) resourceKind() string {
+	return types.KindProxy
 }
 
 // getResourcesAndUpdateCurrent is called when the resources should be
@@ -422,7 +418,7 @@ type lockCollector struct {
 }
 
 // Subscribe is used to subscribe to the lock updates.
-func (p *lockCollector) Subscribe(ctx context.Context, targets []types.LockTarget) (types.Watcher, error) {
+func (p *lockCollector) Subscribe(ctx context.Context, targets ...types.LockTarget) (types.Watcher, error) {
 	watchKinds, err := lockTargetsToWatchKinds(targets)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -434,10 +430,8 @@ func (p *lockCollector) Subscribe(ctx context.Context, targets []types.LockTarge
 	select {
 	case event := <-sub.Events():
 		if event.Type != types.OpInit {
-			return nil, trace.BadParameter("unexpected event type %s", event.Type)
+			return nil, trace.BadParameter("expected init event, got %v instead", event.Type)
 		}
-	case <-time.After(defaults.LowResPollingPeriod):
-		return nil, trace.LimitExceeded("lock watcher subscription failed to initialize")
 	case <-sub.Done():
 		return nil, trace.Wrap(sub.Error())
 	}
@@ -446,7 +440,7 @@ func (p *lockCollector) Subscribe(ctx context.Context, targets []types.LockTarge
 
 // GetSomeLockInForce returns one of the matching locks that are in force,
 // nil if not found.
-func (p *lockCollector) GetSomeLockInForce(targets []types.LockTarget) types.Lock {
+func (p *lockCollector) GetSomeLockInForce(targets ...types.LockTarget) types.Lock {
 	p.currentRW.RLock()
 	defer p.currentRW.RUnlock()
 
@@ -466,13 +460,9 @@ func (p *lockCollector) GetSomeLockInForce(targets []types.LockTarget) types.Loc
 	return nil
 }
 
-// WatchKinds specifies the resource kinds to watch.
-func (p *lockCollector) WatchKinds() []types.WatchKind {
-	return []types.WatchKind{
-		{
-			Kind: types.KindLock,
-		},
-	}
+// resourceKind specifies the resource kind to watch.
+func (p *lockCollector) resourceKind() string {
+	return types.KindLock
 }
 
 // getResourcesAndUpdateCurrent is called when the resources should be

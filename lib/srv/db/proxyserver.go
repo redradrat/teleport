@@ -147,7 +147,11 @@ func NewProxyServer(ctx context.Context, config ProxyServerConfig) (*ProxyServer
 // Serve starts accepting database connections from the provided listener.
 func (s *ProxyServer) Serve(listener net.Listener) error {
 	s.log.Debug("Started database proxy.")
-	defer s.log.Debug("Database proxy exited.")
+	go s.cfg.LockWatcher.RunWatchLoop()
+	defer func() {
+		s.cfg.LockWatcher.Close()
+		s.log.Debug("Database proxy exited.")
+	}()
 	for {
 		// Accept the connection from the database client, such as psql.
 		// The connection is expected to come through via multiplexer.
