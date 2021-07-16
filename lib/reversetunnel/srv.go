@@ -199,6 +199,9 @@ type Config struct {
 	// Pass in a access point that can be configured with the old access point
 	// policy until all clusters are migrated to 5.0 and above.
 	NewCachingAccessPointOldProxy auth.NewCachingAccessPoint
+
+	// LockWatcher is a lock watcher.
+	LockWatcher *services.LockWatcher
 }
 
 // CheckAndSetDefaults checks parameters and sets default values
@@ -247,6 +250,9 @@ func (cfg *Config) CheckAndSetDefaults() error {
 	cfg.Log = logger.WithFields(log.Fields{
 		trace.Component: cfg.Component,
 	})
+	if cfg.LockWatcher == nil {
+		return trace.BadParameter("missing parameter LockWatcher")
+	}
 	return nil
 }
 

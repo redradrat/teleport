@@ -2536,6 +2536,7 @@ func (process *TeleportProcess) initProxyEndpoint(conn *Connector) error {
 				FIPS:          cfg.FIPS,
 				Emitter:       streamEmitter,
 				Log:           process.log,
+				LockWatcher:   lockWatcher,
 			})
 		if err != nil {
 			return trace.Wrap(err)
