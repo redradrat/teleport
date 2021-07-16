@@ -148,11 +148,13 @@ type Monitor struct {
 
 // start starts monitoring connection.
 func (w *Monitor) start(lockWatch types.Watcher) {
+	lockWatchDone := lockWatch.Done()
 	defer func() {
 		if err := lockWatch.Close(); err != nil {
 			w.Entry.WithError(err).Warn("Failed to close lock watcher subscription.")
 		}
 	}()
+	// If an applicable lock is already in force, close the connection immediately.
 	if lock := w.LockWatcher.GetSomeLockInForce(w.LockTargets...); lock != nil {
 		w.handleLockInForce(lock)
 		return
@@ -215,14 +217,22 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 		case lockEvent := <-lockWatch.Events():
 			lock, err := getLock(lockEvent)
 			if err != nil {
-				w.Entry.WithError(err).Warnf("Failed to extract lock from event: %v.", lockEvent)
+				w.Entry.WithError(err).Warnf("Failed to extract lock from event %v.", lockEvent)
 				continue
 			}
 			w.handleLockInForce(lock)
 			return
 
+		case <-lockWatchDone:
+			w.Entry.WithError(lockWatch.Error()).Warn("Lock watcher subscription was closed.")
+			if w.DisconnectExpiredCert.IsZero() && w.ClientIdleTimeout == 0 {
+				return
+			}
+			// Prevent spinning on the zero value received from the closed Done channel.
+			lockWatchDone = nil
+
 		case <-w.Context.Done():
-			w.Entry.Debug("Releasing associated resources - context has been closed.")
+			w.Entry.Debugf("Releasing associated resources - context has been closed.")
 			return
 		}
 	}
