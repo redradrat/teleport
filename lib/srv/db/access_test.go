@@ -677,6 +677,7 @@ func setupTestContext(ctx context.Context, t *testing.T, withDatabases ...withDa
 		},
 	})
 	require.NoError(t, err)
+	t.Cleanup(lockWatcher.Close)
 
 	// Create database proxy server.
 	testCtx.proxyServer, err = NewProxyServer(ctx, ProxyServerConfig{

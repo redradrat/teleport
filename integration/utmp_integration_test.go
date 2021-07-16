@@ -211,6 +211,7 @@ func newSrvCtx(ctx context.Context, t *testing.T) *SrvCtx {
 		},
 	})
 	require.NoError(t, err)
+	t.Cleanup(lockWatcher.Close)
 
 	nodeDir := t.TempDir()
 	srv, err := regular.New(

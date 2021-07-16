@@ -944,6 +944,8 @@ func TestProxyReverseTunnel(t *testing.T) {
 	logger := logrus.WithField("test", "TestProxyReverseTunnel")
 	listener, reverseTunnelAddress := mustListen(t)
 	defer listener.Close()
+	lockWatcher := newLockWatcher(ctx, t, proxyClient)
+
 	reverseTunnelServer, err := reversetunnel.NewServer(reversetunnel.Config{
 		ClientTLS:                     proxyClient.TLSConfig(),
 		ID:                            hostID,
@@ -959,6 +961,7 @@ func TestProxyReverseTunnel(t *testing.T) {
 		Component:                     teleport.ComponentProxy,
 		Emitter:                       proxyClient,
 		Log:                           logger,
+		LockWatcher:                   lockWatcher,
 	})
 	require.NoError(t, err)
 	require.NoError(t, reverseTunnelServer.Start())
@@ -981,7 +984,7 @@ func TestProxyReverseTunnel(t *testing.T) {
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
 		SetClock(f.clock),
-		SetLockWatcher(newLockWatcher(ctx, t, proxyClient)),
+		SetLockWatcher(lockWatcher),
 	)
 	require.NoError(t, err)
 	require.NoError(t, proxy.Start())
@@ -1127,6 +1130,9 @@ func TestProxyRoundRobin(t *testing.T) {
 
 	logger := logrus.WithField("test", "TestProxyRoundRobin")
 	listener, reverseTunnelAddress := mustListen(t)
+	defer listener.Close()
+	lockWatcher := newLockWatcher(ctx, t, proxyClient)
+
 	reverseTunnelServer, err := reversetunnel.NewServer(reversetunnel.Config{
 		ClusterName:                   f.testSrv.ClusterName(),
 		ClientTLS:                     proxyClient.TLSConfig(),
@@ -1141,6 +1147,7 @@ func TestProxyRoundRobin(t *testing.T) {
 		DataDir:                       t.TempDir(),
 		Emitter:                       proxyClient,
 		Log:                           logger,
+		LockWatcher:                   lockWatcher,
 	})
 	require.NoError(t, err)
 	logger.WithField("tun-addr", reverseTunnelAddress.String()).Info("Created reverse tunnel server.")
@@ -1163,7 +1170,7 @@ func TestProxyRoundRobin(t *testing.T) {
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
 		SetClock(f.clock),
-		SetLockWatcher(newLockWatcher(ctx, t, nodeClient)),
+		SetLockWatcher(lockWatcher),
 	)
 	require.NoError(t, err)
 	require.NoError(t, proxy.Start())
@@ -1245,6 +1252,8 @@ func TestProxyDirectAccess(t *testing.T) {
 	listener, _ := mustListen(t)
 	logger := logrus.WithField("test", "TestProxyDirectAccess")
 	proxyClient, _ := newProxyClient(t, f.testSrv)
+	lockWatcher := newLockWatcher(ctx, t, proxyClient)
+
 	reverseTunnelServer, err := reversetunnel.NewServer(reversetunnel.Config{
 		ClientTLS:                     proxyClient.TLSConfig(),
 		ID:                            hostID,
@@ -1259,6 +1268,7 @@ func TestProxyDirectAccess(t *testing.T) {
 		DataDir:                       t.TempDir(),
 		Emitter:                       proxyClient,
 		Log:                           logger,
+		LockWatcher:                   lockWatcher,
 	})
 	require.NoError(t, err)
 
@@ -1282,7 +1292,7 @@ func TestProxyDirectAccess(t *testing.T) {
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
 		SetClock(f.clock),
-		SetLockWatcher(newLockWatcher(ctx, t, nodeClient)),
+		SetLockWatcher(lockWatcher),
 	)
 	require.NoError(t, err)
 	require.NoError(t, proxy.Start())
@@ -1945,6 +1955,7 @@ func newLockWatcher(ctx context.Context, t *testing.T, client types.Events) *ser
 		},
 	})
 	require.NoError(t, err)
+	t.Cleanup(lockWatcher.Close)
 	return lockWatcher
 }
 
