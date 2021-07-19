@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"os"
 	"os/user"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -62,6 +63,7 @@ import (
 	"github.com/gravitational/teleport/lib/httplib/csrf"
 	"github.com/gravitational/teleport/lib/modules"
 	"github.com/gravitational/teleport/lib/pam"
+	restricted "github.com/gravitational/teleport/lib/restrictedsession"
 	"github.com/gravitational/teleport/lib/reversetunnel"
 	"github.com/gravitational/teleport/lib/secret"
 	"github.com/gravitational/teleport/lib/services"
@@ -219,6 +221,7 @@ func (s *WebSuite) SetUpTest(c *C) {
 		regular.SetEmitter(nodeClient),
 		regular.SetPAMConfig(&pam.Config{Enabled: false}),
 		regular.SetBPF(&bpf.NOP{}),
+		regular.SetRestrictedSessionManager(&restricted.NOP{}),
 		regular.SetClock(s.clock),
 		regular.SetLockWatcher(nodeLockWatcher),
 	)
@@ -282,6 +285,7 @@ func (s *WebSuite) SetUpTest(c *C) {
 		regular.SetEmitter(s.proxyClient),
 		regular.SetNamespace(apidefaults.Namespace),
 		regular.SetBPF(&bpf.NOP{}),
+		regular.SetRestrictedSessionManager(&restricted.NOP{}),
 		regular.SetClock(s.clock),
 		regular.SetLockWatcher(proxyLockWatcher),
 	)
@@ -1742,6 +1746,25 @@ func (s *WebSuite) TestConstructSSHResponseLegacy(c *C) {
 	c.Assert(resp.TLSCert, DeepEquals, []byte{0x01})
 }
 
+type byTimeAndIndex []apievents.AuditEvent
+
+func (f byTimeAndIndex) Len() int {
+	return len(f)
+}
+
+func (f byTimeAndIndex) Less(i, j int) bool {
+	itime := f[i].GetTime()
+	jtime := f[j].GetTime()
+	if itime.Equal(jtime) && events.GetSessionID(f[i]) == events.GetSessionID(f[j]) {
+		return f[i].GetIndex() < f[j].GetIndex()
+	}
+	return itime.Before(jtime)
+}
+
+func (f byTimeAndIndex) Swap(i, j int) {
+	f[i], f[j] = f[j], f[i]
+}
+
 // TestSearchClusterEvents makes sure web API allows querying events by type.
 func (s *WebSuite) TestSearchClusterEvents(c *C) {
 	// We need a clock that uses the current time here to work around
@@ -1758,6 +1781,7 @@ func (s *WebSuite) TestSearchClusterEvents(c *C) {
 		c.Assert(s.proxyClient.EmitAuditEvent(context.TODO(), e), IsNil)
 	}
 
+	sort.Sort(sort.Reverse(byTimeAndIndex(sessionEvents)))
 	sessionStart := sessionEvents[0]
 	sessionPrint := sessionEvents[1]
 	sessionEnd := sessionEvents[4]
@@ -2619,6 +2643,7 @@ func newWebPack(t *testing.T, numProxies int) *webPack {
 		regular.SetEmitter(nodeClient),
 		regular.SetPAMConfig(&pam.Config{Enabled: false}),
 		regular.SetBPF(&bpf.NOP{}),
+		regular.SetRestrictedSessionManager(&restricted.NOP{}),
 		regular.SetClock(clock),
 		regular.SetLockWatcher(nodeLockWatcher),
 	)
@@ -2711,6 +2736,7 @@ func createProxy(ctx context.Context, t *testing.T, proxyID string, node *regula
 		regular.SetEmitter(client),
 		regular.SetNamespace(apidefaults.Namespace),
 		regular.SetBPF(&bpf.NOP{}),
+		regular.SetRestrictedSessionManager(&restricted.NOP{}),
 		regular.SetClock(clock),
 		regular.SetLockWatcher(proxyLockWatcher),
 	)

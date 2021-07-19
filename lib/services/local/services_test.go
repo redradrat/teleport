@@ -71,6 +71,7 @@ func (s *ServicesSuite) SetUpTest(c *check.C) {
 		EventsS:       eventsService,
 		ChangesC:      make(chan interface{}),
 		ConfigS:       configService,
+		RestrictionsS: NewRestrictionsService(s.bk),
 		Clock:         clock,
 	}
 }
@@ -166,4 +167,8 @@ func (s *ServicesSuite) TestSemaphoreContention(c *check.C) {
 
 func (s *ServicesSuite) TestSemaphoreFlakiness(c *check.C) {
 	s.suite.SemaphoreFlakiness(c)
+}
+
+func (s *ServicesSuite) TestNetworkRestrictions(c *check.C) {
+	s.suite.NetworkRestrictions(c)
 }

@@ -46,6 +46,7 @@ import (
 	"github.com/gravitational/teleport/lib/bpf"
 	"github.com/gravitational/teleport/lib/limiter"
 	"github.com/gravitational/teleport/lib/pam"
+	restricted "github.com/gravitational/teleport/lib/restrictedsession"
 	"github.com/gravitational/teleport/lib/reversetunnel"
 	"github.com/gravitational/teleport/lib/services"
 	sess "github.com/gravitational/teleport/lib/session"
@@ -163,6 +164,7 @@ func newCustomFixture(t *testing.T, mutateCfg func(*auth.TestServerConfig), sshO
 			},
 		),
 		SetBPF(&bpf.NOP{}),
+		SetRestrictedSessionManager(&restricted.NOP{}),
 		SetClock(clock),
 		SetLockWatcher(newLockWatcher(ctx, t, nodeClient)),
 	}
@@ -983,6 +985,7 @@ func TestProxyReverseTunnel(t *testing.T) {
 		SetNamespace(apidefaults.Namespace),
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
+		SetRestrictedSessionManager(&restricted.NOP{}),
 		SetClock(f.clock),
 		SetLockWatcher(lockWatcher),
 	)
@@ -1062,6 +1065,7 @@ func TestProxyReverseTunnel(t *testing.T) {
 		SetNamespace(apidefaults.Namespace),
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
+		SetRestrictedSessionManager(&restricted.NOP{}),
 		SetEmitter(nodeClient),
 		SetClock(f.clock),
 		SetLockWatcher(newLockWatcher(ctx, t, nodeClient)),
@@ -1169,6 +1173,7 @@ func TestProxyRoundRobin(t *testing.T) {
 		SetNamespace(apidefaults.Namespace),
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
+		SetRestrictedSessionManager(&restricted.NOP{}),
 		SetClock(f.clock),
 		SetLockWatcher(lockWatcher),
 	)
@@ -1291,6 +1296,7 @@ func TestProxyDirectAccess(t *testing.T) {
 		SetNamespace(apidefaults.Namespace),
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
+		SetRestrictedSessionManager(&restricted.NOP{}),
 		SetClock(f.clock),
 		SetLockWatcher(lockWatcher),
 	)
@@ -1422,6 +1428,7 @@ func TestLimiter(t *testing.T) {
 		SetNamespace(apidefaults.Namespace),
 		SetPAMConfig(&pam.Config{Enabled: false}),
 		SetBPF(&bpf.NOP{}),
+		SetRestrictedSessionManager(&restricted.NOP{}),
 		SetClock(f.clock),
 		SetLockWatcher(newLockWatcher(ctx, t, nodeClient)),
 	)
