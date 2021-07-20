@@ -1062,16 +1062,16 @@ func (a *Server) GetMFAAuthenticateChallenge(user string, password []byte) (*MFA
 	return chal, nil
 }
 
-// GetMFAAuthenticateChallengeWithToken retrieves challenges for all mfa devices for the user
-// defined in the token.
+// GetMFAAuthenticateChallengeWithToken retrieves challenges for all mfa devices for the user defined in the token.
 func (a *Server) GetMFAAuthenticateChallengeWithToken(ctx context.Context, req *proto.GetMFAAuthenticateChallengeWithTokenRequest) (*proto.MFAAuthenticateChallenge, error) {
-	if req.GetTokenID() == "" {
-		return nil, trace.BadParameter("missing tokenID")
-	}
-
 	token, err := a.GetResetPasswordToken(ctx, req.GetTokenID())
 	if err != nil {
 		return nil, trace.Wrap(err)
+	}
+
+	// Restrict to certain kinds of user token.
+	if token.GetSubKind() != ResetPasswordTokenRecoveryStart {
+		return nil, trace.BadParameter("invalid token")
 	}
 
 	if token.Expiry().Before(a.clock.Now().UTC()) {
@@ -1079,6 +1079,55 @@ func (a *Server) GetMFAAuthenticateChallengeWithToken(ctx context.Context, req *
 	}
 
 	return a.mfaAuthChallenge(ctx, token.GetUser(), a.Identity)
+}
+
+// GetMFADevicesWithToken returns all mfa devices for the user defined in the token.
+func (a *Server) GetMFADevicesWithToken(ctx context.Context, req *proto.GetMFADevicesWithTokenRequest) (*proto.GetMFADevicesResponse, error) {
+	token, err := a.GetResetPasswordToken(ctx, req.GetTokenID())
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	// Restrict to certain kinds of user token.
+	if token.GetSubKind() != ResetPasswordTokenRecoveryApproved {
+		return nil, trace.BadParameter("invalid token")
+	}
+
+	if token.Expiry().Before(a.clock.Now().UTC()) {
+		return nil, trace.BadParameter("expired token")
+	}
+
+	devs, err := a.GetMFADevices(ctx, token.GetUser())
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return &proto.GetMFADevicesResponse{
+		Devices: devs,
+	}, nil
+}
+
+// DeleteMFADeviceWithToken deletes a mfa device.
+func (a *Server) DeleteMFADeviceWithToken(ctx context.Context, req *proto.DeleteMFADeviceWithTokenRequest) error {
+	token, err := a.GetResetPasswordToken(ctx, req.GetTokenID())
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	// Restrict to certain kinds of user token.
+	if token.GetSubKind() != ResetPasswordTokenRecoveryApproved {
+		return trace.BadParameter("invalid token")
+	}
+
+	if token.Expiry().Before(a.clock.Now().UTC()) {
+		return trace.BadParameter("expired token")
+	}
+
+	if err := a.DeleteMFADevice(ctx, token.GetUser(), req.GetDeviceID()); err != nil {
+		return trace.Wrap(err)
+	}
+
+	return nil
 }
 
 func (a *Server) CheckU2FSignResponse(ctx context.Context, user string, response *u2f.AuthenticateChallengeResponse) (*types.MFADevice, error) {

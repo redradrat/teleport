@@ -95,8 +95,10 @@ func (r *CreateResetPasswordTokenRequest) CheckAndSetDefaults() error {
 				"failed to create reset password token: maximum token TTL is %v hours",
 				defaults.MaxChangePasswordTokenTTL)
 		}
-	case ResetPasswordTokenRecoveryStart, ResetPasswordTokenRecoveryApproved:
-		r.TTL = defaults.MaxRecoveryTokenTTL
+	case ResetPasswordTokenRecoveryStart:
+		r.TTL = defaults.MaxRecoveryStartTokenTTL
+	case ResetPasswordTokenRecoveryApproved:
+		r.TTL = defaults.MaxRecoveryApprovedTokenTTL
 
 	default:
 		return trace.BadParameter("unknown reset password token request type(%v)", r.Type)

@@ -341,7 +341,6 @@ func NewHandler(cfg Config, opts ...HandlerOption) (*RewritingHandler, error) {
 	h.GET("/webapi/u2f/signuptokens/:token", httplib.MakeHandler(h.u2fRegisterRequest))
 	h.POST("/webapi/u2f/password/changerequest", h.WithAuth(h.u2fChangePasswordRequest))
 	h.POST("/webapi/u2f/signrequest", httplib.MakeHandler(h.mfaChallengeRequest))
-	h.POST("/webapi/u2f/signrequestwithtoken", httplib.MakeHandler(h.mfaChallengeRequestWithToken))
 	h.POST("/webapi/u2f/sessions", httplib.MakeHandler(h.createSessionWithU2FSignResponse))
 	h.POST("/webapi/u2f/certs", httplib.MakeHandler(h.createSSHCertWithMFAChallengeResponse))
 
@@ -1436,7 +1435,7 @@ func (h *Handler) changePasswordWithToken(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	res, err := h.auth.proxyClient.ChangePasswordWithToken(r.Context(), &proto.NewUserAuthCredWithTokenRequest{
+	res, err := h.auth.proxyClient.ChangePasswordWithToken(r.Context(), &proto.ChangePasswordWithTokenRequest{
 		SecondFactorToken:   req.SecondFactorToken,
 		TokenID:             req.TokenID,
 		Password:            req.Password,
@@ -1566,42 +1565,6 @@ func (h *Handler) mfaChallengeRequest(w http.ResponseWriter, r *http.Request, p 
 	}
 
 	return mfaChallenge, nil
-}
-
-type mfaChallengeRequestWithTokenRequest struct {
-	TokenID string `json:"tokenId"`
-}
-
-// mfaChallengeRequestWithToken is called to get mfa challenges from all mfa devices with a reset token as auth.
-func (h *Handler) mfaChallengeRequestWithToken(w http.ResponseWriter, r *http.Request, p httprouter.Params) (interface{}, error) {
-	var req mfaChallengeRequestWithTokenRequest
-	if err := httplib.ReadJSON(r, &req); err != nil {
-		return nil, trace.Wrap(err)
-	}
-
-	res, err := h.GetProxyClient().GetMFAAuthenticateChallengeWithToken(r.Context(), &proto.GetMFAAuthenticateChallengeWithTokenRequest{
-		TokenID: req.TokenID,
-	})
-	if err != nil {
-		return nil, trace.AccessDenied("bad or expired token")
-	}
-
-	// Convert from proto to JSON format.
-	chal := &auth.MFAAuthenticateChallenge{
-		TOTPChallenge: res.TOTP != nil,
-	}
-
-	for _, u2fChal := range res.U2F {
-		ch := u2f.AuthenticateChallenge{
-			Version:   u2fChal.Version,
-			Challenge: u2fChal.Challenge,
-			KeyHandle: u2fChal.KeyHandle,
-			AppID:     u2fChal.AppID,
-		}
-		chal.U2FChallenges = append(chal.U2FChallenges, ch)
-	}
-
-	return chal, nil
 }
 
 // A request from the client to send the signature from the U2F key

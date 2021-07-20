@@ -577,7 +577,7 @@ func (c *Client) CreateResetPasswordToken(ctx context.Context, req *proto.Create
 }
 
 // ChangePasswordWithToken changes user password with a reset password token.
-func (c *Client) ChangePasswordWithToken(ctx context.Context, req *proto.NewUserAuthCredWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error) {
+func (c *Client) ChangePasswordWithToken(ctx context.Context, req *proto.ChangePasswordWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error) {
 	res, err := c.grpc.ChangePasswordWithToken(ctx, req, c.callOpts...)
 	if err != nil {
 		return nil, trail.FromGRPC(err)
@@ -586,9 +586,9 @@ func (c *Client) ChangePasswordWithToken(ctx context.Context, req *proto.NewUser
 	return res, nil
 }
 
-// VerifyRecoveryCode verifies a given recovery code.
-func (c *Client) VerifyRecoveryCode(ctx context.Context, req *proto.VerifyRecoveryCodeRequest) (types.ResetPasswordToken, error) {
-	res, err := c.grpc.VerifyRecoveryCode(ctx, req, c.callOpts...)
+// CreateRecoveryStartToken creates a recovery start token after successful verification of username and recovery code.
+func (c *Client) CreateRecoveryStartToken(ctx context.Context, req *proto.CreateRecoveryStartTokenRequest) (types.ResetPasswordToken, error) {
+	res, err := c.grpc.CreateRecoveryStartToken(ctx, req, c.callOpts...)
 	if err != nil {
 		return nil, trail.FromGRPC(err)
 	}
@@ -596,8 +596,7 @@ func (c *Client) VerifyRecoveryCode(ctx context.Context, req *proto.VerifyRecove
 	return res, nil
 }
 
-// AuthenticateUserWithRecoveryToken authenticates user defined in token with either password or
-// second factor.
+// AuthenticateUserWithRecoveryToken authenticates user defined in token with either password or second factor.
 func (c *Client) AuthenticateUserWithRecoveryToken(ctx context.Context, req *proto.AuthenticateUserWithRecoveryTokenRequest) (types.ResetPasswordToken, error) {
 	res, err := c.grpc.AuthenticateUserWithRecoveryToken(ctx, req, c.callOpts...)
 	if err != nil {
@@ -607,10 +606,18 @@ func (c *Client) AuthenticateUserWithRecoveryToken(ctx context.Context, req *pro
 	return res, nil
 }
 
-// RecoverAccountWithToken is the last step in the recovery flow that either changes a user
-// password or adds a new mfa device depending on the request.
-func (c *Client) RecoverAccountWithToken(ctx context.Context, req *proto.NewUserAuthCredWithTokenRequest) (*proto.RecoverAccountWithTokenResponse, error) {
-	res, err := c.grpc.RecoverAccountWithToken(ctx, req, c.callOpts...)
+// SetNewAuthCredWithRecoveryToken either changes a user password or adds a new mfa device depending on the request.
+func (c *Client) SetNewAuthCredWithRecoveryToken(ctx context.Context, req *proto.SetNewAuthCredWithRecoveryTokenRequest) error {
+	if _, err := c.grpc.SetNewAuthCredWithRecoveryToken(ctx, req, c.callOpts...); err != nil {
+		return trail.FromGRPC(err)
+	}
+
+	return nil
+}
+
+// CreateRecoveryCodesWithToken creates and returns new recovery codes for the user defined in the token.
+func (c *Client) CreateRecoveryCodesWithToken(ctx context.Context, req *proto.CreateRecoveryCodesWithTokenRequest) (*proto.CreateRecoveryCodesWithTokenResponse, error) {
+	res, err := c.grpc.CreateRecoveryCodesWithToken(ctx, req, c.callOpts...)
 	if err != nil {
 		return nil, trail.FromGRPC(err)
 	}
@@ -1051,6 +1058,23 @@ func (c *Client) GetMFAAuthenticateChallengeWithToken(ctx context.Context, in *p
 	}
 
 	return resp, nil
+}
+
+func (c *Client) GetMFADevicesWithToken(ctx context.Context, in *proto.GetMFADevicesWithTokenRequest) (*proto.GetMFADevicesResponse, error) {
+	resp, err := c.grpc.GetMFADevicesWithToken(ctx, in, c.callOpts...)
+	if err != nil {
+		return nil, trail.FromGRPC(err)
+	}
+
+	return resp, nil
+}
+
+func (c *Client) DeleteMFADeviceWithToken(ctx context.Context, in *proto.DeleteMFADeviceWithTokenRequest) error {
+	if _, err := c.grpc.DeleteMFADeviceWithToken(ctx, in, c.callOpts...); err != nil {
+		return trail.FromGRPC(err)
+	}
+
+	return nil
 }
 
 func (c *Client) GenerateUserSingleUseCerts(ctx context.Context) (proto.AuthService_GenerateUserSingleUseCertsClient, error) {

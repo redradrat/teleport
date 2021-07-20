@@ -247,7 +247,7 @@ func (s *PasswordSuite) TestChangePasswordWithToken(c *C) {
 	})
 	c.Assert(err, IsNil)
 
-	_, err = s.a.changePasswordWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
+	_, err = s.a.changePasswordWithToken(ctx, &proto.ChangePasswordWithTokenRequest{
 		TokenID:  token.GetName(),
 		Password: password,
 	})
@@ -285,7 +285,7 @@ func (s *PasswordSuite) TestChangePasswordWithTokenOTP(c *C) {
 	otpToken, err := totp.GenerateCode(secrets.GetOTPKey(), s.bk.Clock().Now())
 	c.Assert(err, IsNil)
 
-	_, err = s.a.changePasswordWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
+	_, err = s.a.changePasswordWithToken(ctx, &proto.ChangePasswordWithTokenRequest{
 		TokenID:           token.GetName(),
 		Password:          password,
 		SecondFactorToken: otpToken,
@@ -319,14 +319,14 @@ func (s *PasswordSuite) TestChangePasswordWithTokenErrors(c *C) {
 	type testCase struct {
 		desc         string
 		secondFactor constants.SecondFactorType
-		req          *proto.NewUserAuthCredWithTokenRequest
+		req          *proto.ChangePasswordWithTokenRequest
 	}
 
 	testCases := []testCase{
 		{
 			secondFactor: constants.SecondFactorOff,
 			desc:         "invalid tokenID value",
-			req: &proto.NewUserAuthCredWithTokenRequest{
+			req: &proto.ChangePasswordWithTokenRequest{
 				TokenID:  "what_token",
 				Password: validPassword,
 			},
@@ -334,7 +334,7 @@ func (s *PasswordSuite) TestChangePasswordWithTokenErrors(c *C) {
 		{
 			secondFactor: constants.SecondFactorOff,
 			desc:         "invalid password",
-			req: &proto.NewUserAuthCredWithTokenRequest{
+			req: &proto.ChangePasswordWithTokenRequest{
 				TokenID:  validTokenID,
 				Password: []byte("short"),
 			},
@@ -342,7 +342,7 @@ func (s *PasswordSuite) TestChangePasswordWithTokenErrors(c *C) {
 		{
 			secondFactor: constants.SecondFactorOTP,
 			desc:         "missing second factor",
-			req: &proto.NewUserAuthCredWithTokenRequest{
+			req: &proto.ChangePasswordWithTokenRequest{
 				TokenID:  validTokenID,
 				Password: validPassword,
 			},
@@ -350,7 +350,7 @@ func (s *PasswordSuite) TestChangePasswordWithTokenErrors(c *C) {
 		{
 			secondFactor: constants.SecondFactorOTP,
 			desc:         "invalid OTP value",
-			req: &proto.NewUserAuthCredWithTokenRequest{
+			req: &proto.ChangePasswordWithTokenRequest{
 				TokenID:           validTokenID,
 				Password:          validPassword,
 				SecondFactorToken: "invalid",
@@ -372,14 +372,14 @@ func (s *PasswordSuite) TestChangePasswordWithTokenErrors(c *C) {
 	err = s.a.SetAuthPreference(ctx, authPreference)
 	c.Assert(err, IsNil)
 
-	_, err = s.a.changePasswordWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
+	_, err = s.a.changePasswordWithToken(ctx, &proto.ChangePasswordWithTokenRequest{
 		TokenID:  validTokenID,
 		Password: validPassword,
 	})
 	c.Assert(err, IsNil)
 
 	// invite token cannot be reused
-	_, err = s.a.changePasswordWithToken(ctx, &proto.NewUserAuthCredWithTokenRequest{
+	_, err = s.a.changePasswordWithToken(ctx, &proto.ChangePasswordWithTokenRequest{
 		TokenID:  validTokenID,
 		Password: validPassword,
 	})

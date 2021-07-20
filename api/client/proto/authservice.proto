@@ -781,8 +781,20 @@ message GetMFADevicesRequest {}
 // GetMFADeviceResponse is a response for GetMFADevices RPC.
 message GetMFADevicesResponse { repeated types.MFADevice Devices = 1; }
 
-// GetMFAAuthenticateChallengeWithTokenRequest is a request for getting mfa challenges
-// with a token as authentication.
+// GetMFADevicesWithTokenRequest is a request to get all the mfa devices for the user defined in
+// token.
+message GetMFADevicesWithTokenRequest { string TokenID = 1; }
+
+// DeleteMFADeviceWithTokenRequest is a request to delete a mfa device for the user defined in
+// token.
+message DeleteMFADeviceWithTokenRequest {
+    string TokenID = 1;
+    // DeviceID is the id of device to delete.
+    string DeviceID = 2;
+}
+
+// GetMFAAuthenticateChallengeWithTokenRequest is a request for getting mfa challenges for the user
+// defined in token.
 message GetMFAAuthenticateChallengeWithTokenRequest { string TokenID = 1; }
 
 // UserSingleUseCertsRequest is a request for a single-use user certificate.
@@ -937,14 +949,29 @@ message DeleteLockRequest {
     string Name = 1;
 }
 
+// ChangePasswordWithTokenRequest defines a request to change one or more of a user's auth
+// credential.
+message ChangePasswordWithTokenRequest {
+    string TokenID = 1;
+    // SecondFactorToken is an otp value.
+    string SecondFactorToken = 2;
+    // Password is user's password.
+    bytes Password = 3;
+    // U2FRegisterResponse is U2F registration challenge response.
+    U2FRegisterResponse U2FRegisterResponse = 4;
+    // DeviceName is the name of the second factor device.
+    string DeviceName = 5;
+}
+
 // ChangePasswordWithTokenResponse is a response for ChangePasswordWithToken.
 message ChangePasswordWithTokenResponse {
     types.WebSessionV2 WebSession = 1;
     repeated string RecoveryCodes = 2;
 }
 
-// VerifyRecoveryCodeRequest defines a request to verify a user's recovery code.
-message VerifyRecoveryCodeRequest {
+// CreateRecoveryStartTokenRequest defines a request to create a user token for starting account
+// recovery.
+message CreateRecoveryStartTokenRequest {
     // Username is the requesting user.
     string Username = 1;
     // RecoveryCode is one of the user's recovery code.
@@ -956,7 +983,6 @@ message VerifyRecoveryCodeRequest {
 // AuthenticateUserWithRecoveryTokenRequest defines a request to authenticate the user defined in
 // token with either password or a second factor.
 message AuthenticateUserWithRecoveryTokenRequest {
-    // TokenID is this token ID.
     string TokenID = 1;
     oneof AuthCred {
         // SecondFactorToken is 2nd factor token value.
@@ -966,30 +992,31 @@ message AuthenticateUserWithRecoveryTokenRequest {
         // U2FSignResponse is U2F sign response to a challenge.
         U2FResponse U2FSignResponse = 4;
     }
-    // Username is the user the token was made for.
-    string Username = 5;
 }
 
-// RecoverAccountWithTokenResponse is a response for RecoverAccountWithToken.
-message RecoverAccountWithTokenResponse {
-    string Username = 1;
-    repeated string RecoveryCodes = 2;
-}
-
-// NewUserAuthCredWithTokenRequest defines a request to change one or more of a user's
-// authentication credential with a token.
-message NewUserAuthCredWithTokenRequest {
-    // TokenID is this token ID.
+// SetNewAuthCredWithRecoveryTokenRequest defines a request to set either a new password or
+// add a new mfa device.
+message SetNewAuthCredWithRecoveryTokenRequest {
     string TokenID = 1;
-    // SecondFactorToken is an otp value.
-    string SecondFactorToken = 2;
-    // Password is user's password.
-    bytes Password = 3;
-    // U2FRegisterResponse is U2F registration challenge response.
-    U2FRegisterResponse U2FRegisterResponse = 4;
-    // DeviceName is the name of the second factor device.
-    string DeviceName = 5;
+    // DeviceName is the name of a new mfa device.
+    string DeviceName = 2;
+    oneof AuthCred {
+        // SecondFactorToken is 2nd factor token value.
+        string SecondFactorToken = 3;
+        // Password is user password.
+        bytes Password = 4;
+        // U2FRegisterResponse is U2F registration challenge response.
+        U2FRegisterResponse U2FRegisterResponse = 5;
+    }
 }
+
+// CreateRecoveryCodesWithTokenRequest is a request to create new recovery codes for the user
+// defined in token.
+message CreateRecoveryCodesWithTokenRequest { string TokenID = 1; }
+
+// CreateRecoveryCodesWithTokenResponse is the response to
+// CreateRecoveryCodesWithTokenRequest.
+message CreateRecoveryCodesWithTokenResponse { repeated string RecoveryCodes = 1; }
 
 // AuthService is authentication/authorization service implementation
 service AuthService {
@@ -1182,10 +1209,6 @@ service AuthService {
     // GetMFADevices returns all MFA devices registered for the user calling
     // this RPC.
     rpc GetMFADevices(GetMFADevicesRequest) returns (GetMFADevicesResponse);
-    // GetMFAAuthenticateChallengeWithToken retrieves challenges for all mfa devices for the user
-    // defined in the token.
-    rpc GetMFAAuthenticateChallengeWithToken(GetMFAAuthenticateChallengeWithTokenRequest)
-        returns (MFAAuthenticateChallenge);
 
     // GetOIDCConnector gets an OIDC connector resource by name.
     rpc GetOIDCConnector(types.ResourceWithSecretsRequest) returns (types.OIDCConnectorV2);
@@ -1282,16 +1305,31 @@ service AuthService {
     rpc DeleteNetworkRestrictions(google.protobuf.Empty) returns (google.protobuf.Empty);
 
     // ChangePasswordWithToken changes a user's password with a reset token.
-    rpc ChangePasswordWithToken(NewUserAuthCredWithTokenRequest)
+    rpc ChangePasswordWithToken(ChangePasswordWithTokenRequest)
         returns (ChangePasswordWithTokenResponse);
-    // VerifyRecoveryCode verifies a given recovery code.
-    rpc VerifyRecoveryCode(VerifyRecoveryCodeRequest) returns (types.ResetPasswordTokenV3);
+    // CreateRecoveryStartToken creates a recovery start token after successful verification of
+    // username and recovery code.
+    rpc CreateRecoveryStartToken(CreateRecoveryStartTokenRequest)
+        returns (types.ResetPasswordTokenV3);
     // AuthenticateUserWithRecoveryToken authenticates the user defined in token, with either their
     // password or second factor.
     rpc AuthenticateUserWithRecoveryToken(AuthenticateUserWithRecoveryTokenRequest)
         returns (types.ResetPasswordTokenV3);
-    // RecoverAccountWithToken is the last step in the recovery flow that either changes a user
-    // password or adds a new mfa device depending on the request.
-    rpc RecoverAccountWithToken(NewUserAuthCredWithTokenRequest)
-        returns (RecoverAccountWithTokenResponse);
+    // SetNewAuthCredWithRecoveryToken either changes a user password or adds a new mfa device
+    // depending on the request.
+    rpc SetNewAuthCredWithRecoveryToken(SetNewAuthCredWithRecoveryTokenRequest)
+        returns (google.protobuf.Empty);
+    // CreateRecoveryCodesWithToken creates and returns new recovery codes for the user defined
+    // in the token.
+    rpc CreateRecoveryCodesWithToken(CreateRecoveryCodesWithTokenRequest)
+        returns (CreateRecoveryCodesWithTokenResponse);
+
+    // GetMFAAuthenticateChallengeWithToken retrieves challenges for all mfa devices for the user
+    // defined in the token.
+    rpc GetMFAAuthenticateChallengeWithToken(GetMFAAuthenticateChallengeWithTokenRequest)
+        returns (MFAAuthenticateChallenge);
+    // GetMFADevicesWithToken returns all mfa devices for the user defined in the token.
+    rpc GetMFADevicesWithToken(GetMFADevicesWithTokenRequest) returns (GetMFADevicesResponse);
+    // DeleteMFADeviceWithToken deletes a mfa device for the user defined in the token.
+    rpc DeleteMFADeviceWithToken(DeleteMFADeviceWithTokenRequest) returns (google.protobuf.Empty);
 }

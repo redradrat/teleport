@@ -149,8 +149,11 @@ const (
 	// ChangePasswordTokenTTL is a default password change token expiry time
 	ChangePasswordTokenTTL = 8 * time.Hour
 
-	// MaxRecoveryTokenTTL is a default expiry time for a recovery token.
-	MaxRecoveryTokenTTL = 3 * time.Hour
+	// MaxRecoveryStartTokenTTL is a default expiry time for a recovery start token.
+	MaxRecoveryStartTokenTTL = 3 * time.Hour
+
+	// MaxRecoveryApprovedTokenTTL is a default expiry time for a recovery approved token.
+	MaxRecoveryApprovedTokenTTL = 15 * time.Minute
 
 	// ResetPasswordLength is the length of the reset user password
 	ResetPasswordLength = 16

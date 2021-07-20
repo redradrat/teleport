@@ -1916,12 +1916,15 @@ func (g *GRPCServer) GetMFADevices(ctx context.Context, req *proto.GetMFADevices
 	}, nil
 }
 
-// GetMFAAuthenticateChallengeWithToken retrieves challenges for all mfa devices for the user
-// defined in the token.
+// GetMFAAuthenticateChallengeWithToken retrieves challenges for all mfa devices for the user defined in the token.
 func (g *GRPCServer) GetMFAAuthenticateChallengeWithToken(ctx context.Context, req *proto.GetMFAAuthenticateChallengeWithTokenRequest) (*proto.MFAAuthenticateChallenge, error) {
 	actx, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
+	}
+
+	if req.TokenID == "" {
+		return nil, trace.BadParameter("missing TokenID")
 	}
 
 	res, err := actx.ServerWithRoles.GetMFAAuthenticateChallengeWithToken(ctx, req)
@@ -1930,6 +1933,47 @@ func (g *GRPCServer) GetMFAAuthenticateChallengeWithToken(ctx context.Context, r
 	}
 
 	return res, nil
+}
+
+// GetMFADevicesWithToken returns all mfa devices for the user defined in the token.
+func (g *GRPCServer) GetMFADevicesWithToken(ctx context.Context, req *proto.GetMFADevicesWithTokenRequest) (*proto.GetMFADevicesResponse, error) {
+	actx, err := g.authenticate(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if req.TokenID == "" {
+		return nil, trace.BadParameter("missing TokenID")
+	}
+
+	res, err := actx.ServerWithRoles.GetMFADevicesWithToken(ctx, req)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return res, nil
+}
+
+// DeleteMFADeviceWithToken deletes a mfa device for the user defined in the token.
+func (g *GRPCServer) DeleteMFADeviceWithToken(ctx context.Context, req *proto.DeleteMFADeviceWithTokenRequest) (*empty.Empty, error) {
+	actx, err := g.authenticate(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if req.TokenID == "" {
+		return nil, trace.BadParameter("missing TokenID")
+	}
+
+	if req.DeviceID == "" {
+		return nil, trace.BadParameter("missing DeviceID")
+	}
+
+	if err := actx.ServerWithRoles.DeleteMFADeviceWithToken(ctx, req); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return &empty.Empty{}, nil
 }
 
 func (g *GRPCServer) GenerateUserSingleUseCerts(stream proto.AuthService_GenerateUserSingleUseCertsServer) error {
@@ -2886,7 +2930,7 @@ func (g *GRPCServer) DeleteLock(ctx context.Context, req *proto.DeleteLockReques
 }
 
 // ChangePasswordWithToken changes password with a password reset token.
-func (g *GRPCServer) ChangePasswordWithToken(ctx context.Context, req *proto.NewUserAuthCredWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error) {
+func (g *GRPCServer) ChangePasswordWithToken(ctx context.Context, req *proto.ChangePasswordWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -2900,8 +2944,9 @@ func (g *GRPCServer) ChangePasswordWithToken(ctx context.Context, req *proto.New
 	return res, nil
 }
 
-// VerifyRecoveryCode verifies a given recovery code.
-func (g *GRPCServer) VerifyRecoveryCode(ctx context.Context, req *proto.VerifyRecoveryCodeRequest) (*types.ResetPasswordTokenV3, error) {
+// CreateRecoveryStartToken creates a recovery start token after successful verification of
+// username and recovery code.
+func (g *GRPCServer) CreateRecoveryStartToken(ctx context.Context, req *proto.CreateRecoveryStartTokenRequest) (*types.ResetPasswordTokenV3, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -2917,10 +2962,10 @@ func (g *GRPCServer) VerifyRecoveryCode(ctx context.Context, req *proto.VerifyRe
 
 	// Only user's with email as their username can receive/use recovery codes.
 	if _, err := mail.ParseAddress(req.GetUsername()); err != nil {
-		return nil, trace.Wrap(err, "invalid email address: %q", req.GetUsername())
+		return nil, trace.BadParameter("only usernames that are emails are allowed to recover their account")
 	}
 
-	resetToken, err := auth.ServerWithRoles.VerifyRecoveryCode(ctx, req)
+	resetToken, err := auth.ServerWithRoles.CreateRecoveryStartToken(ctx, req)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -2946,10 +2991,6 @@ func (g *GRPCServer) AuthenticateUserWithRecoveryToken(ctx context.Context, req 
 		return nil, trace.BadParameter("missing tokenId")
 	}
 
-	if req.GetUsername() == "" {
-		return nil, trace.BadParameter("missing username")
-	}
-
 	if req.GetPassword() == nil && req.GetSecondFactorToken() == "" && req.GetU2FSignResponse() == nil {
 		return nil, trace.BadParameter("at least one authentication method is required")
 	}
@@ -2968,9 +3009,9 @@ func (g *GRPCServer) AuthenticateUserWithRecoveryToken(ctx context.Context, req 
 	return r, nil
 }
 
-// RecoverAccountWithToken is the last step in the recovery flow that either changes a user
+// SetNewAuthCredWithRecoveryToken is the last step in the recovery flow that either changes a user
 // password or adds a new mfa device depending on the request.
-func (g *GRPCServer) RecoverAccountWithToken(ctx context.Context, req *proto.NewUserAuthCredWithTokenRequest) (*proto.RecoverAccountWithTokenResponse, error) {
+func (g *GRPCServer) SetNewAuthCredWithRecoveryToken(ctx context.Context, req *proto.SetNewAuthCredWithRecoveryTokenRequest) (*empty.Empty, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -2984,12 +3025,25 @@ func (g *GRPCServer) RecoverAccountWithToken(ctx context.Context, req *proto.New
 		return nil, trace.BadParameter("missing new authentication cred")
 	}
 
-	res, err := auth.ServerWithRoles.RecoverAccountWithToken(ctx, req)
+	if err := auth.ServerWithRoles.SetNewAuthCredWithRecoveryToken(ctx, req); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return &empty.Empty{}, nil
+}
+
+// CreateRecoveryCodesWithToken creates and returns new recovery codes for the user defined in the token.
+func (g *GRPCServer) CreateRecoveryCodesWithToken(ctx context.Context, req *proto.CreateRecoveryCodesWithTokenRequest) (*proto.CreateRecoveryCodesWithTokenResponse, error) {
+	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 
-	return res, nil
+	if req.GetTokenID() == "" {
+		return nil, trace.BadParameter("missing token")
+	}
+
+	return auth.ServerWithRoles.CreateRecoveryCodesWithToken(ctx, req)
 }
 
 // GRPCServerConfig specifies GRPC server configuration

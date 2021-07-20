@@ -1838,6 +1838,12 @@ type IdentityService interface {
 	// defined in the token.
 	GetMFAAuthenticateChallengeWithToken(ctx context.Context, req *proto.GetMFAAuthenticateChallengeWithTokenRequest) (*proto.MFAAuthenticateChallenge, error)
 
+	// GetMFADevicesWithToken returns all mfa devices for the user defined in the token.
+	GetMFADevicesWithToken(ctx context.Context, req *proto.GetMFADevicesWithTokenRequest) (*proto.GetMFADevicesResponse, error)
+
+	// DeleteMFADeviceWithToken deletes a mfa device for the user defined in the token.
+	DeleteMFADeviceWithToken(ctx context.Context, req *proto.DeleteMFADeviceWithTokenRequest) error
+
 	// GetSignupU2FRegisterRequest generates sign request for user trying to sign up with invite token
 	GetSignupU2FRegisterRequest(token string) (*u2f.RegisterChallenge, error)
 
@@ -1906,18 +1912,22 @@ type IdentityService interface {
 	CreateResetPasswordToken(ctx context.Context, req CreateResetPasswordTokenRequest) (types.ResetPasswordToken, error)
 
 	// ChangePasswordWithToken changes password with token
-	ChangePasswordWithToken(ctx context.Context, req *proto.NewUserAuthCredWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error)
+	ChangePasswordWithToken(ctx context.Context, req *proto.ChangePasswordWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error)
 
-	// VerifyRecoveryCode verifies a given recovery code.
-	VerifyRecoveryCode(ctx context.Context, req *proto.VerifyRecoveryCodeRequest) (types.ResetPasswordToken, error)
+	// CreateRecoveryStartToken creates a recovery start token after successful verification of
+	// username and recovery code.
+	CreateRecoveryStartToken(ctx context.Context, req *proto.CreateRecoveryStartTokenRequest) (types.ResetPasswordToken, error)
 
 	// AuthenticateUserWithRecoveryToken authenticates user defined in token with either password or
 	// second factor.
 	AuthenticateUserWithRecoveryToken(ctx context.Context, req *proto.AuthenticateUserWithRecoveryTokenRequest) (types.ResetPasswordToken, error)
 
-	// RecoverAccountWithToken is the last step in the recovery flow that either changes a user
-	// password or adds a new mfa device depending on the request.
-	RecoverAccountWithToken(ctx context.Context, req *proto.NewUserAuthCredWithTokenRequest) (*proto.RecoverAccountWithTokenResponse, error)
+	// SetNewAuthCredWithRecoveryToken either changes a user password or adds a new mfa device
+	// depending on the request.
+	SetNewAuthCredWithRecoveryToken(ctx context.Context, req *proto.SetNewAuthCredWithRecoveryTokenRequest) error
+
+	// CreateRecoveryCodesWithToken creates and returns new recovery codes for the user defined in the token.
+	CreateRecoveryCodesWithToken(ctx context.Context, req *proto.CreateRecoveryCodesWithTokenRequest) (*proto.CreateRecoveryCodesWithTokenResponse, error)
 
 	// GetResetPasswordToken returns token
 	GetResetPasswordToken(ctx context.Context, username string) (types.ResetPasswordToken, error)

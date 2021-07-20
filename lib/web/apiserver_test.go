@@ -1481,7 +1481,7 @@ func testU2FLogin(t *testing.T, secondFactor constants.SecondFactorType) {
 	require.NoError(t, err)
 
 	tempPass := []byte("abc123")
-	_, err = env.proxies[0].client.ChangePasswordWithToken(ctx, &apiProto.NewUserAuthCredWithTokenRequest{
+	_, err = env.proxies[0].client.ChangePasswordWithToken(ctx, &apiProto.ChangePasswordWithTokenRequest{
 		TokenID: token.GetName(),
 		U2FRegisterResponse: &apiProto.U2FRegisterResponse{
 			RegistrationData: u2fRegResp.RegistrationData,

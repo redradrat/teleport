@@ -674,9 +674,10 @@ func (c *Client) SetAuthPreference(ctx context.Context, cap types.AuthPreference
 	return nil
 }
 
-// ChangePasswordWithToken changes user password with ResetPasswordToken and returns recovery tokens
-// for cloud users with second factors.
-func (c *Client) ChangePasswordWithToken(ctx context.Context, req *proto.NewUserAuthCredWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error) {
+// ChangePasswordWithToken changes user password with a user reset token and starts a web session.
+//
+// Returns recovery tokens for cloud users with second factors turned on.
+func (c *Client) ChangePasswordWithToken(ctx context.Context, req *proto.ChangePasswordWithTokenRequest) (*proto.ChangePasswordWithTokenResponse, error) {
 	if resp, err := c.APIClient.ChangePasswordWithToken(ctx, req); err != nil {
 		if !trace.IsNotImplemented(err) {
 			return nil, trace.Wrap(err)
