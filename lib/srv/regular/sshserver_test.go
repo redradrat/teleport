@@ -368,7 +368,6 @@ func TestLockInForce(t *testing.T) {
 		select {
 		case <-endCh:
 			return true
-
 		default:
 			return false
 		}
