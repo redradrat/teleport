@@ -386,6 +386,7 @@ func ApplyFileConfig(fc *FileConfig, cfg *service.Config) error {
 	return nil
 }
 
+
 func applyLogConfig(loggerConfig Log, logger *log.Logger) error {
 	switch loggerConfig.Output {
 	case "":
