@@ -391,10 +391,10 @@ func TestAddU2FWithRecoveryTokenAndPassword(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, chal.U2FChallenges, 2)
 
-	var secondChal *u2f.SignRequest
+	var secondChal u2f.SignRequest
 	for _, chal := range chal.U2FChallenges {
 		if chal.KeyHandle != firstChal.KeyHandle {
-			secondChal = &chal
+			secondChal = chal
 		} else {
 			// Update challenge
 			firstChal = chal
