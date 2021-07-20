@@ -37,15 +37,13 @@ type resourceCollector interface {
 	resourceKind() string
 	// getResourcesAndUpdateCurrent is called when the resources should be
 	// (re-)fetched directly.
-	getResourcesAndUpdateCurrent() error
+	getResourcesAndUpdateCurrent(context.Context) error
 	// processEventAndUpdateCurrent is called when a watcher event is received.
-	processEventAndUpdateCurrent(types.Event)
+	processEventAndUpdateCurrent(context.Context, types.Event)
 }
 
 // ResourceWatcherConfig configures resource watcher.
 type ResourceWatcherConfig struct {
-	ctx    context.Context
-	cancel context.CancelFunc
 	// Component is a component used in logs.
 	Component string
 	// Log is a logger.
@@ -87,7 +85,7 @@ func (cfg *ResourceWatcherConfig) CheckAndSetDefaults() error {
 // newResourceWatcher returns a new instance of resourceWatcher.
 // It is the caller's responsibility to verify the inputs' validity
 // incl. cfg.CheckAndSetDefaults.
-func newResourceWatcher(collector resourceCollector, cfg ResourceWatcherConfig) (*resourceWatcher, error) {
+func newResourceWatcher(ctx context.Context, collector resourceCollector, cfg ResourceWatcherConfig) (*resourceWatcher, error) {
 	retry, err := utils.NewLinear(utils.LinearConfig{
 		Step: cfg.RetryPeriod / 10,
 		Max:  cfg.RetryPeriod,
@@ -100,9 +98,10 @@ func newResourceWatcher(collector resourceCollector, cfg ResourceWatcherConfig) 
 		resourceCollector:     collector,
 		ResourceWatcherConfig: cfg,
 		retry:                 retry,
+		done:                  make(chan struct{}),
 		ResetC:                make(chan struct{}),
 	}
-	go p.runWatchLoop()
+	go p.runWatchLoop(ctx)
 	return p, nil
 }
 
@@ -115,30 +114,41 @@ type resourceWatcher struct {
 	// retry is used to manage backoff logic for watchers.
 	retry utils.Retry
 
+	// done is a channel indicating the resource watcher has been closed.
+	done     chan struct{}
+	doneOnce sync.Once
+
 	// ResetC is a channel to notify of internal watcher reset (used in tests).
 	ResetC chan struct{}
 }
 
-// Done returns a channel that signals resource watcher closure.
-func (p *resourceWatcher) Done() <-chan struct{} {
-	return p.ResourceWatcherConfig.ctx.Done()
+// Done returns a channel that signals the resource watcher has been closed.
+func (p *resourceWatcher) Done() chan struct{} {
+	return p.done
 }
 
-// Close closes the resource watcher and cancels all the functions.
+// Close closes the resource watcher.
 func (p *resourceWatcher) Close() {
-	p.ResourceWatcherConfig.cancel()
+	p.doneOnce.Do(func() {
+		close(p.done)
+	})
 }
 
 // runWatchLoop runs a watch loop.
-func (p *resourceWatcher) runWatchLoop() {
+func (p *resourceWatcher) runWatchLoop(ctx context.Context) {
 	for {
 		p.Log.WithField("retry", p.retry).Debug("Starting watch.")
-		err := p.watch()
+		err := p.watch(ctx)
 		select {
 		case <-p.retry.After():
 			p.retry.Inc()
-		case <-p.ctx.Done():
-			p.Log.Debug("Closed, returning from watch loop.")
+		case <-ctx.Done():
+			p.Log.Debug("Context closed (%v), returning from watch loop.", ctx.Err())
+			// Also close the internal done channel.
+			p.Close()
+			return
+		case <-p.done:
+			p.Log.Debug("Resource watcher closed, returning from watch loop.")
 			return
 		}
 		select {
@@ -153,8 +163,8 @@ func (p *resourceWatcher) runWatchLoop() {
 
 // watch monitors new resource updates, maintains a local view and broadcasts
 // notifications to connected agents.
-func (p *resourceWatcher) watch() error {
-	watcher, err := p.Client.NewWatcher(p.ctx, types.Watch{
+func (p *resourceWatcher) watch(ctx context.Context) error {
+	watcher, err := p.Client.NewWatcher(ctx, types.Watch{
 		Name:            p.Component,
 		MetricComponent: p.Component,
 		Kinds:           []types.WatchKind{{Kind: p.resourceKind()}},
@@ -181,19 +191,21 @@ func (p *resourceWatcher) watch() error {
 	// by receiving init event first.
 	select {
 	case <-watcher.Done():
-		return trace.ConnectionProblem(watcher.Error(), "watcher is closed")
+		return trace.ConnectionProblem(watcher.Error(), "underlying watcher is closed")
 	case <-refetchC:
 		p.Log.Debug("Triggering scheduled refetch.")
 		return nil
-	case <-p.ctx.Done():
-		return trace.ConnectionProblem(p.ctx.Err(), "context is closing")
+	case <-ctx.Done():
+		return trace.ConnectionProblem(ctx.Err(), "context is closing")
+	case <-p.done:
+		return trace.ConnectionProblem(nil, "resource watcher is closed")
 	case event := <-watcher.Events():
 		if event.Type != types.OpInit {
 			return trace.BadParameter("expected init event, got %v instead", event.Type)
 		}
 	}
 
-	if err := p.getResourcesAndUpdateCurrent(); err != nil {
+	if err := p.getResourcesAndUpdateCurrent(ctx); err != nil {
 		return trace.Wrap(err)
 	}
 	p.retry.Reset()
@@ -201,14 +213,16 @@ func (p *resourceWatcher) watch() error {
 	for {
 		select {
 		case <-watcher.Done():
-			return trace.ConnectionProblem(watcher.Error(), "watcher is closed")
+			return trace.ConnectionProblem(watcher.Error(), "underlying watcher is closed")
 		case <-refetchC:
 			p.Log.Debug("Triggering scheduled refetch.")
 			return nil
-		case <-p.ctx.Done():
-			return trace.ConnectionProblem(p.ctx.Err(), "context is closing")
+		case <-ctx.Done():
+			return trace.ConnectionProblem(ctx.Err(), "context is closing")
+		case <-p.done:
+			return trace.ConnectionProblem(nil, "resource watcher is closed")
 		case event := <-watcher.Events():
-			p.processEventAndUpdateCurrent(event)
+			p.processEventAndUpdateCurrent(ctx, event)
 		}
 	}
 }
@@ -244,14 +258,13 @@ func (cfg *ProxyWatcherConfig) CheckAndSetDefaults() error {
 
 // NewProxyWatcher returns a new instance of ProxyWatcher.
 func NewProxyWatcher(ctx context.Context, cfg ProxyWatcherConfig) (*ProxyWatcher, error) {
-	cfg.ctx, cfg.cancel = context.WithCancel(ctx)
 	if err := cfg.CheckAndSetDefaults(); err != nil {
 		return nil, trace.Wrap(err)
 	}
 	collector := &proxyCollector{
 		ProxyWatcherConfig: cfg,
 	}
-	watcher, err := newResourceWatcher(collector, cfg.ResourceWatcherConfig)
+	watcher, err := newResourceWatcher(ctx, collector, cfg.ResourceWatcherConfig)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -288,7 +301,7 @@ func (p *proxyCollector) resourceKind() string {
 
 // getResourcesAndUpdateCurrent is called when the resources should be
 // (re-)fetched directly.
-func (p *proxyCollector) getResourcesAndUpdateCurrent() error {
+func (p *proxyCollector) getResourcesAndUpdateCurrent(ctx context.Context) error {
 	proxies, err := p.ProxyGetter.GetProxies()
 	if err != nil {
 		return trace.Wrap(err)
@@ -304,12 +317,12 @@ func (p *proxyCollector) getResourcesAndUpdateCurrent() error {
 	p.rw.Lock()
 	defer p.rw.Unlock()
 	p.current = newCurrent
-	p.broadcastUpdate()
+	p.broadcastUpdate(ctx)
 	return nil
 }
 
 // processEventAndUpdateCurrent is called when a watcher event is received.
-func (p *proxyCollector) processEventAndUpdateCurrent(event types.Event) {
+func (p *proxyCollector) processEventAndUpdateCurrent(ctx context.Context, event types.Event) {
 	if event.Resource == nil || event.Resource.GetKind() != types.KindProxy {
 		p.Log.Warningf("Unexpected event: %v.", event)
 		return
@@ -322,7 +335,7 @@ func (p *proxyCollector) processEventAndUpdateCurrent(event types.Event) {
 	case types.OpDelete:
 		delete(p.current, event.Resource.GetName())
 		// Always broadcast when a proxy is deleted.
-		p.broadcastUpdate()
+		p.broadcastUpdate(ctx)
 	case types.OpPut:
 		server, ok := event.Resource.(types.Server)
 		if !ok {
@@ -333,7 +346,7 @@ func (p *proxyCollector) processEventAndUpdateCurrent(event types.Event) {
 		p.current[server.GetName()] = server
 		// Broadcast only creation of new proxies (not known before).
 		if !known {
-			p.broadcastUpdate()
+			p.broadcastUpdate(ctx)
 		}
 	default:
 		p.Log.Warningf("Skipping unsupported event type %s.", event.Type)
@@ -341,7 +354,7 @@ func (p *proxyCollector) processEventAndUpdateCurrent(event types.Event) {
 }
 
 // broadcastUpdate broadcasts information about updating the proxy set.
-func (p *proxyCollector) broadcastUpdate() {
+func (p *proxyCollector) broadcastUpdate(ctx context.Context) {
 	names := make([]string, 0, len(p.current))
 	for k := range p.current {
 		names = append(names, k)
@@ -350,7 +363,7 @@ func (p *proxyCollector) broadcastUpdate() {
 
 	select {
 	case p.ProxiesC <- serverMapValues(p.current):
-	case <-p.ctx.Done():
+	case <-ctx.Done():
 	}
 }
 
@@ -385,7 +398,6 @@ func (cfg *LockWatcherConfig) CheckAndSetDefaults() error {
 
 // NewLockWatcher returns a new instance of LockWatcher.
 func NewLockWatcher(ctx context.Context, cfg LockWatcherConfig) (*LockWatcher, error) {
-	cfg.ctx, cfg.cancel = context.WithCancel(ctx)
 	if err := cfg.CheckAndSetDefaults(); err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -393,7 +405,7 @@ func NewLockWatcher(ctx context.Context, cfg LockWatcherConfig) (*LockWatcher, e
 		LockWatcherConfig: cfg,
 		fanout:            NewFanout(),
 	}
-	watcher, err := newResourceWatcher(collector, cfg.ResourceWatcherConfig)
+	watcher, err := newResourceWatcher(ctx, collector, cfg.ResourceWatcherConfig)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -468,8 +480,8 @@ func (p *lockCollector) resourceKind() string {
 
 // getResourcesAndUpdateCurrent is called when the resources should be
 // (re-)fetched directly.
-func (p *lockCollector) getResourcesAndUpdateCurrent() error {
-	locks, err := p.LockGetter.GetLocks(p.ctx)
+func (p *lockCollector) getResourcesAndUpdateCurrent(ctx context.Context) error {
+	locks, err := p.LockGetter.GetLocks(ctx)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -490,7 +502,7 @@ func (p *lockCollector) getResourcesAndUpdateCurrent() error {
 }
 
 // processEventAndUpdateCurrent is called when a watcher event is received.
-func (p *lockCollector) processEventAndUpdateCurrent(event types.Event) {
+func (p *lockCollector) processEventAndUpdateCurrent(ctx context.Context, event types.Event) {
 	if event.Resource == nil || event.Resource.GetKind() != types.KindLock {
 		p.Log.Warningf("Unexpected event: %v.", event)
 		return
