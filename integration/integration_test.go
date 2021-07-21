@@ -5579,7 +5579,7 @@ func TestSessionStreaming(t *testing.T) {
 	require.NoError(t, err)
 
 	teleport := NewInstance(InstanceConfig{
-		ClusterName: "root.example.com",
+		ClusterName: Site,
 		HostID:      uuid.New(),
 		NodeName:    Host,
 		Ports:       ports.PopIntSlice(6),
