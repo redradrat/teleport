@@ -79,7 +79,7 @@ func TestProxyWatcher(t *testing.T) {
 	case changeset := <-w.ProxiesC:
 		require.Len(t, changeset, 1)
 		require.Empty(t, resourceDiff(changeset[0], proxy))
-	case <-ctx.Done():
+	case <-w.Done():
 		t.Fatal("Watcher has unexpectedly exited.")
 	case <-time.After(2 * time.Second):
 		t.Fatal("Timeout waiting for the first event.")
@@ -93,7 +93,7 @@ func TestProxyWatcher(t *testing.T) {
 	select {
 	case changeset := <-w.ProxiesC:
 		require.Len(t, changeset, 2)
-	case <-ctx.Done():
+	case <-w.Done():
 		t.Fatal("Watcher has unexpectedly exited.")
 	case <-time.After(2 * time.Second):
 		t.Fatal("Timeout waiting for the update event.")
@@ -107,7 +107,7 @@ func TestProxyWatcher(t *testing.T) {
 	case changeset := <-w.ProxiesC:
 		require.Len(t, changeset, 1)
 		require.Empty(t, resourceDiff(changeset[0], proxy2))
-	case <-ctx.Done():
+	case <-w.Done():
 		t.Fatal("Watcher has unexpectedly exited.")
 	case <-time.After(2 * time.Second):
 		t.Fatal("Timeout waiting for the update event.")
