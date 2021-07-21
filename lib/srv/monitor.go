@@ -219,15 +219,17 @@ func (w *Monitor) start(lockWatch types.Watcher) {
 				w.Entry.WithError(err).Warnf("Failed to extract lock from event %v.", lockEvent)
 				continue
 			}
-			w.handleLockInForce(lock)
-			return
+			if lock != nil {
+				w.handleLockInForce(lock)
+				return
+			}
 
 		case <-lockWatchDone:
 			w.Entry.WithError(lockWatch.Error()).Warn("Lock watcher subscription was closed.")
 			if w.DisconnectExpiredCert.IsZero() && w.ClientIdleTimeout == 0 {
 				return
 			}
-			// Prevent spinning on the zero value received from the closed Done channel.
+			// Prevent spinning on the zero value received from a closed Done channel.
 			lockWatchDone = nil
 
 		case <-w.Context.Done():
@@ -284,6 +286,9 @@ func getLock(lockEvent types.Event) (types.Lock, error) {
 			return nil, trace.BadParameter("unexpected lock event resource type %T", lockEvent.Resource)
 		}
 		return lock, nil
+	case types.OpDelete:
+		// Lock deletion can be ignored.
+		return nil, nil
 	default:
 		// TODO(andrej): Handle stale lock views.
 		return nil, trace.BadParameter("Skipping unexpected lock event type %s.", lockEvent.Type)

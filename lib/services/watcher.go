@@ -506,7 +506,7 @@ func (p *lockCollector) processEventAndUpdateCurrent(ctx context.Context, event 
 	switch event.Type {
 	case types.OpDelete:
 		delete(p.current, event.Resource.GetName())
-		// Lock deletion need not be broadcast further.
+		p.fanout.Emit(event)
 	case types.OpPut:
 		lock, ok := event.Resource.(types.Lock)
 		if !ok {

@@ -179,12 +179,13 @@ func TestLockWatcher(t *testing.T) {
 	}
 	require.Nil(t, w.GetSomeLockInForce(target))
 
-	// Update the latter lock so it becomes in force.
+	// Update the lock so it becomes in force.
 	futureTime := clock.Now().Add(time.Minute)
 	lock.SetLockExpiry(&futureTime)
 	require.NoError(t, access.UpsertLock(ctx, lock))
 	select {
 	case event := <-sub.Events():
+		require.Equal(t, types.OpPut, event.Type)
 		receivedLock, ok := event.Resource.(types.Lock)
 		require.True(t, ok)
 		require.Empty(t, resourceDiff(receivedLock, lock))
@@ -194,6 +195,37 @@ func TestLockWatcher(t *testing.T) {
 		t.Fatal("Timeout waiting for the update event.")
 	}
 	require.Empty(t, resourceDiff(w.GetSomeLockInForce(target), lock))
+
+	// Delete the lock.
+	require.NoError(t, access.DeleteLock(ctx, lock.GetName()))
+	select {
+	case event := <-sub.Events():
+		require.Equal(t, types.OpDelete, event.Type)
+		require.Equal(t, event.Resource.GetName(), lock.GetName())
+	case <-sub.Done():
+		t.Fatal("Lock watcher subscription has unexpectedly exited.")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for the update event.")
+	}
+	require.Nil(t, w.GetSomeLockInForce(target))
+
+	// Add a lock matching a different target.
+	target2 := types.LockTarget{User: "user"}
+	require.Nil(t, w.GetSomeLockInForce(target2))
+	lock2, err := types.NewLock("lock2", types.LockSpecV2{
+		Target: target2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, access.UpsertLock(ctx, lock2))
+	select {
+	case event := <-sub.Events():
+		t.Fatalf("Unexpected event: %v.", event)
+	case <-sub.Done():
+		t.Fatal("Lock watcher subscription has unexpectedly exited.")
+	case <-time.After(2 * time.Second):
+	}
+	require.Nil(t, w.GetSomeLockInForce(target))
+	require.Empty(t, resourceDiff(w.GetSomeLockInForce(target2), lock2))
 }
 
 func resourceDiff(res1, res2 types.Resource) string {
