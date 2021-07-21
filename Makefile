@@ -477,11 +477,17 @@ version: $(VERSRC)
 
 # This rule triggers re-generation of version files specified if Makefile changes.
 $(VERSRC): Makefile
+	@if [ \
+			$$(grep "Version = " version.go | awk -F'Version = "' '{print$$2}' | cut -d "." -f1) \
+			!= $$(echo $(VERSION) | cut -d "." -f1) \
+		]; \
+		then make update-api-version; \
+	fi
 	VERSION=$(VERSION) $(MAKE) -f version.mk setver
 
 
-.PHONY: upgrade-api-version
-upgrade-api-version:
+.PHONY: update-api-version
+update-api-version:
 	@$(eval CURRENT_VER_SUFFIX=$(shell head -1 api/go.mod | awk -F'api/' '{print $$2}'))
 	@$(eval CURRENT_VER_SUFFIX=$(shell [ "$(CURRENT_VER_SUFFIX)" == "" ] && echo "v0" || echo "$(CURRENT_VER_SUFFIX)"))
 	@$(eval CURRENT_MOD_PATH=$(shell head -1 api/go.mod | awk '{print $$2;}' | sed 's;/;\\/;g'))
