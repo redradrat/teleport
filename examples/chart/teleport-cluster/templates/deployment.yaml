@@ -105,6 +105,10 @@ spec:
         env:
           {{- toYaml .Values.extraEnv | nindent 8 }}
         {{- end }}
+        {{- if .Values.extraEnvSecrets }}
+        envFrom:
+          {{- toYaml .Values.extraEnvSecrets | nindent 8 }}
+        {{- end }}
         args:
         - "--diag-addr=0.0.0.0:3000"
         {{- if .Values.insecureSkipProxyTLSVerify }}

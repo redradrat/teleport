@@ -173,6 +173,12 @@ extraArgs: []
 # Extra environment to be configured on the Teleport pod
 extraEnv: []
 
+# Extra secretRefs to be added to the environment on the Teleport pod
+extraEnvSecrets: []
+# - secretRef:
+#       name: my-secret
+
+
 # Extra volumes to mount into the Teleport pods
 # https://kubernetes.io/docs/concepts/storage/volumes/
 extraVolumes: []
